@@ -1,7 +1,7 @@
 # ssds.pytorch
 Repository for Single Shot MultiBox Detector and its variants, implemented with pytorch, python3.
 
-Currently, it contains these features:
+Currently, it contains these features (Additional features are work in progress):
 - **Multiple SSD Variants**: ssd, rfb, fssd, ssd-lite, rfb-lite, fssd-lite
 - **Multiple Base Network**: VGG, Mobilenet V1/V2
 - **Free Image Size**
