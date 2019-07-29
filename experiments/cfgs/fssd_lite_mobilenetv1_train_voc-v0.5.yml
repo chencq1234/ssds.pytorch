@@ -5,8 +5,11 @@ MODEL:
   NUM_CLASSES: 4
   FEATURE_LAYER: [[[5, 11, 13], [256, 512, 1024]],
                   [['', 'S', 'S', 'S', '', ''], [512, 512, 256, 256, 256, 256]]]
+#  STEPS: [[8, 8], [16, 16], [32, 32], [64, 64], [100, 100], [300, 300]]
+#  SIZES: [[30, 30], [60, 60], [111, 111], [162, 162], [213, 213], [264, 264], [315, 315]]
   STEPS: [[8, 8], [16, 16], [32, 32], [64, 64], [100, 100], [300, 300]]
-  SIZES: [[30, 30], [60, 60], [111, 111], [162, 162], [213, 213], [264, 264], [315, 315]]
+  SIZES: [[37.5,37.5], [25.78125,25.78125], [45.703125,45.703125], [18.75,18.75], [70.3125,70.3125], [112.5,112.5], [175.78125,175.78125]]
+  ASPECT_RATIOS: [[1, 2, 3], [1, 2, 3], [1, 2, 3], [1, 2, 3], [1, 2], [1, 2]]
   ASPECT_RATIOS: [[1, 2, 3], [1, 2, 3], [1, 2, 3], [1, 2, 3], [1, 2], [1, 2]]
 
 TRAIN:
@@ -40,12 +43,14 @@ POST_PROCESS:
 
 DATASET:
   DATASET: 'voc'
-  DATASET_DIR: './data/VOCdevkit'
-  TRAIN_SETS: [['2007', 'trainval'], ['2012', 'trainval']]
-  TEST_SETS:  [['2007', 'test']]
+  DATASET_DIR: '/data-private/nas/pspace/4582data0522/VOCdevkitParking4582ex2-20sted-crop256'
+#  TRAIN_SETS: [['2007', 'trainval'], ['2012', 'trainval']]
+  TRAIN_SETS: [['4582', 'trainval']]
+  TEST_SETS:  [['4582', 'test']]
   PROB: 0.6
 
-EXP_DIR: './experiments/models/fssd_mobilenet_v1_voc'
-LOG_DIR: './experiments/models/fssd_mobilenet_v1_voc'
-RESUME_CHECKPOINT: './weights/fssd_lite/mobilenet_v1_fssd_lite_voc_78.4.pth'
-PHASE: ['test']
+EXP_DIR: '/data-private/nas/pspace/tiPytorchFile/fssd_mobilenet_v1_voc'
+LOG_DIR: '/data-private/nas/pspace/tiPytorchFile/fssd_mobilenet_v1_voc'
+RESUME_CHECKPOINT: ''
+#RESUME_CHECKPOINT: './weights/fssd_lite/mobilenet_v1_fssd_lite_voc_78.4.pth'
+PHASE: ['train', 'test']

@@ -23,6 +23,7 @@ ssds_map = {
 from lib.modeling.nets import vgg
 from lib.modeling.nets import resnet
 from lib.modeling.nets import mobilenet
+from lib.modeling.nets import mobilenet_lite
 from lib.modeling.nets import darknet
 networks_map = {
                     'vgg16': vgg.vgg16,
@@ -34,6 +35,10 @@ networks_map = {
                     'mobilenet_v1_075': mobilenet.mobilenet_v1_075,
                     'mobilenet_v1_050': mobilenet.mobilenet_v1_050,
                     'mobilenet_v1_025': mobilenet.mobilenet_v1_025,
+                    'mobilenet_v1_lite': mobilenet_lite.mobilenet_v1,
+                    'mobilenet_v1_lite_075': mobilenet_lite.mobilenet_v1_075,
+                    'mobilenet_v1_lite_050': mobilenet_lite.mobilenet_v1_050,
+                    'mobilenet_v1_lite_025': mobilenet_lite.mobilenet_v1_025,
                     'mobilenet_v2': mobilenet.mobilenet_v2,
                     'mobilenet_v2_075': mobilenet.mobilenet_v2_075,
                     'mobilenet_v2_050': mobilenet.mobilenet_v2_050,

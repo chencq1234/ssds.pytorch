@@ -4,7 +4,7 @@ import torch.backends.cudnn as cudnn
 from torch.autograd import Function
 from torch.autograd import Variable
 from lib.utils.box_utils import decode,nms
-# from lib.utils.nms.nms_wrapper import nms
+# from prlib.utils.nms.nms_wrapper import nms
 from lib.utils.timer import Timer
 
 class Detect(Function):

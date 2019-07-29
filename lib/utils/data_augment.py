@@ -13,6 +13,7 @@ import numpy as np
 import random
 import math
 from lib.utils.box_utils import matrix_iou
+from torchvision import transforms as tfs
 
 def _crop(image, boxes, labels):
     height, width, _ = image.shape
@@ -23,7 +24,7 @@ def _crop(image, boxes, labels):
     while True:
         mode = random.choice((
             None,
-            (0.1, None),
+            # (0.1, None),
             (0.3, None),
             (0.5, None),
             (0.7, None),
@@ -186,12 +187,59 @@ def preproc_for_test(image, insize, mean):
     image -= mean
     return image.transpose(2, 0, 1)
 
+
 def draw_bbox(image, bbxs, color=(0, 255, 0)):
     img = image.copy()
     bbxs = np.array(bbxs).astype(np.int32)
     for bbx in bbxs:
         cv2.rectangle(img, (bbx[0], bbx[1]), (bbx[2], bbx[3]), color, 5)
     return img
+
+
+def swap_channels(image):
+    """
+    Args:
+        image (Tensor): image tensor to be transformed
+    Return:
+        a tensor with channels swapped according to swap
+    """
+    perms = ((0, 1, 2), (0, 2, 1),
+             (1, 0, 2), (1, 2, 0),
+             (2, 0, 1), (2, 1, 0))
+    swap = perms[random.randrange(len(perms))]
+    image = image[:, :, swap]
+    return image
+
+
+class RandomBrightness(object):
+    def __init__(self, delta=3):
+        assert delta >= 0.0
+        assert delta <= 255.0
+        self.delta = delta
+
+    def __call__(self, image, boxes=None, labels=None):
+        if random.randint(0, 2):
+            delta = random.uniform(-self.delta, self.delta)
+            image = image.astype(np.float32)
+            image += delta
+            image.astype(np.uint8)
+        return image, boxes, labels
+
+
+class RandomHue(object):
+    def __init__(self, delta=10.0):
+        assert delta >= 0.0 and delta <= 360.0
+        self.delta = delta
+
+    def __call__(self, image, boxes=None, labels=None):
+        if random.randint(0, 2):
+            image = image.astype(np.float32)
+            image[:, :, 0] += random.uniform(-self.delta, self.delta)
+            image[:, :, 0][image[:, :, 0] > 360.0] -= 360.0
+            image[:, :, 0][image[:, :, 0] < 0.0] += 360.0
+            image.astype(np.uint8)
+        return image, boxes, labels
+
 
 class preproc(object):
 
@@ -217,7 +265,7 @@ class preproc(object):
             targets = np.zeros((1,5))
             image = preproc_for_test(image, self.resize, self.means) # some ground truth in coco do not have bounding box! weird!
             return torch.from_numpy(image), targets
-        if self.p == -1: # eval
+        if self.p == -1:  # eval
             height, width, _ = image.shape
             boxes[:, 0::2] /= width
             boxes[:, 1::2] /= height
@@ -250,10 +298,10 @@ class preproc(object):
             image_show = draw_bbox(image_t, boxes)
             self.writer.add_image('preprocess/distort_image', image_show, self.epoch)
         
-        # image_t = _elastic(image_t, self.p)
-        # if self.writer is not None:
-        #     image_show = draw_bbox(image_t, boxes)
-        #     self.writer.add_image('preprocess/elastic_image', image_show, self.epoch)
+        image_t = _elastic(image_t, self.p)
+        if self.writer is not None:
+            image_show = draw_bbox(image_t, boxes)
+            self.writer.add_image('preprocess/elastic_image', image_show, self.epoch)
 
         image_t, boxes = _expand(image_t, boxes, self.means, self.p)
         if self.writer is not None:
@@ -264,7 +312,9 @@ class preproc(object):
         if self.writer is not None:
             image_show = draw_bbox(image_t, boxes)
             self.writer.add_image('preprocess/mirror_image', image_show, self.epoch)
-
+        # image_t, boxes, labels = RandomBrightness()(image_t, boxes, labels)
+        image_t = swap_channels(image_t)
+        # image_t, boxes, labels = RandomHue()(image_t, boxes, labels)
         # only write the preprocess step for the first image
         if self.writer is not None:
             # print('image adding')

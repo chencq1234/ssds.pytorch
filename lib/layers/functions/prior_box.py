@@ -45,7 +45,7 @@ class PriorBox(object):
 
                 # rest of aspect ratios
                 for ar in self.aspect_ratios[k]:
-                    if isinstance(ar, int):
+                    if isinstance(ar, int) or isinstance(ar, float):
                         if ar == 1:
                             # aspect_ratio: 1 Min size
                             mean += [cx, cy, s_k, s_k]
@@ -57,7 +57,7 @@ class PriorBox(object):
                         else:
                             ar_sqrt = sqrt(ar)
                             mean += [cx, cy, s_k*ar_sqrt, s_k/ar_sqrt]
-                            mean += [cx, cy, s_k/ar_sqrt, s_k*ar_sqrt]
+                            mean += [cx, cy, s_k/ar_sqrt, s_k*ar_sqrt]   # if flip
                     elif isinstance(ar, list):
                         mean += [cx, cy, s_k*ar[0], s_k*ar[1]]
         #     print(f, self.aspect_ratios[k])

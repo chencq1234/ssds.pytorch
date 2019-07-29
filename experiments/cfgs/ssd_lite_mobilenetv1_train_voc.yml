@@ -2,10 +2,12 @@ MODEL:
   SSDS: ssd_lite
   NETS: mobilenet_v1
   IMAGE_SIZE: [300, 300]
-  NUM_CLASSES: 21
+  NUM_CLASSES: 2
   FEATURE_LAYER: [[11, 13, 'S', 'S', 'S', 'S'], [512, 1024, 512, 256, 256, 128]]
   STEPS: [[16, 16], [32, 32], [64, 64], [100, 100], [150, 150], [300, 300]]
-  SIZES: [[45, 45], [90, 90], [135, 135], [180, 180], [225, 225], [270, 270], [315, 315]]
+  SIZES: [[18.75,18.75], [25.78125,25.78125], [37.5,37.5], [45.703125,45.703125], [70.3125,70.3125], [112.5,112.5], [175.78125,175.78125]]
+#  ASPECT_RATIOS: [[1,1.6,3],[1.656,2.2,3.3], [2,2.5,3], [2,2.5,3], [2,3], [2,3]]
+#  ASPECT_RATIOS: [[1.6,3],[1.656,2.2,3.3], [2,2.5,3,4], [2,2.5,3,4], [2,3,4], [2]]
   ASPECT_RATIOS: [[1, 2, 3], [1, 2, 3], [1, 2, 3], [1, 2, 3], [1, 2], [1, 2]]
 
 TRAIN:
@@ -16,7 +18,7 @@ TRAIN:
   RESUME_SCOPE: 'base,norm,extras,loc,conf'
   OPTIMIZER:
     OPTIMIZER: sgd
-    LEARNING_RATE: 0.004
+    LEARNING_RATE: 0.00004
     MOMENTUM: 0.9
     WEIGHT_DECAY: 0.0001
   LR_SCHEDULER:
@@ -39,12 +41,14 @@ POST_PROCESS:
 
 DATASET:
   DATASET: 'voc'
-  DATASET_DIR: './data/VOCdevkit'
-  TRAIN_SETS: [['2007', 'trainval'], ['2012', 'trainval']]
-  TEST_SETS:  [['2007', 'test']]
+  DATASET_DIR: '/data-private/nas/pspace/4582data0522/VOCdevkitParking4582ex2-20sted-crop256'
+#  TRAIN_SETS: [['2007', 'trainval'], ['2012', 'trainval']]
+  TRAIN_SETS: [['4582', 'trainval']]
+  TEST_SETS:  [['4582', 'test']]
   PROB: 0.6
 
-EXP_DIR: './experiments/models/ssd_mobilenet_v1_voc'
-LOG_DIR: './experiments/models/ssd_mobilenet_v1_voc'
-RESUME_CHECKPOINT: './weights/ssd_lite/mobilenet_v1_ssd_lite_voc_72.7.pth'
-PHASE: ['test']
+EXP_DIR: '/data-private/nas/pspace/tiPytorchFile/ssd_mobilenet_v1_voc'
+LOG_DIR: '/data-private/nas/pspace/tiPytorchFile/ssd_mobilenet_v1_voc'
+RESUME_CHECKPOINT: ''
+#RESUME_CHECKPOINT: './weights/ssd_lite/mobilenet_v1_ssd_lite_voc_72.7.pth'
+PHASE: ['train', 'test']

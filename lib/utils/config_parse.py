@@ -271,7 +271,7 @@ def cfg_from_file(filename):
     import yaml
     with open(filename, 'r') as f:
         yaml_cfg = AttrDict(yaml.load(f))
-
+        # yaml_cfg["FILE_NAME"] = filename
     _merge_a_into_b(yaml_cfg, __C)
     update_cfg()
 

@@ -9,21 +9,34 @@ DepthSepConv = namedtuple('DepthSepConv', ['stride', 'depth'])
 InvertedResidual = namedtuple('InvertedResidual', ['stride', 'depth', 'num', 't']) # t is the expension factor
 
 V1_CONV_DEFS = [
-    Conv(stride=2, depth=32),
+    DepthSepConv(stride=2, depth=16),
+    DepthSepConv(stride=1, depth=32),
+    DepthSepConv(stride=2, depth=64),
     DepthSepConv(stride=1, depth=64),
+    DepthSepConv(stride=1, depth=128),
     DepthSepConv(stride=2, depth=128),
     DepthSepConv(stride=1, depth=128),
-    DepthSepConv(stride=2, depth=256),
-    DepthSepConv(stride=1, depth=256),
-    DepthSepConv(stride=2, depth=512),
-    DepthSepConv(stride=1, depth=512),
-    DepthSepConv(stride=1, depth=512),
-    DepthSepConv(stride=1, depth=512),
-    DepthSepConv(stride=1, depth=512),
-    DepthSepConv(stride=1, depth=512),
-    DepthSepConv(stride=2, depth=1024),
-    DepthSepConv(stride=1, depth=1024)
+    DepthSepConv(stride=1, depth=128),
+    DepthSepConv(stride=2, depth=128),
+    DepthSepConv(stride=1, depth=128),
+    DepthSepConv(stride=1, depth=128),
+    # DepthSepConv(stride=1, depth=512),
+    # DepthSepConv(stride=1, depth=512),
+    # DepthSepConv(stride=2, depth=1024),
+    # DepthSepConv(stride=1, depth=1024)
 ]
+# V1_CONV_DEFS = [
+#     DepthSepConv(stride=2, depth=16),
+#     DepthSepConv(stride=1, depth=32),
+#     DepthSepConv(stride=2, depth=64),
+#     DepthSepConv(stride=1, depth=64),
+#     DepthSepConv(stride=2, depth=128),
+#     DepthSepConv(stride=1, depth=128),
+#     DepthSepConv(stride=2, depth=128),
+#     DepthSepConv(stride=1, depth=128),
+#     DepthSepConv(stride=1, depth=128),
+#     DepthSepConv(stride=1, depth=128),
+# ]
 
 V2_CONV_DEFS = [
     Conv(stride=2, depth=32),
@@ -107,12 +120,13 @@ def mobilenet(conv_defs, depth_multiplier=1.0, min_depth=8):
     depth = lambda d: max(int(d * depth_multiplier), min_depth)
     layers = []
     in_channels = 3
-    for conv_def in conv_defs:
+    for idx, conv_def in enumerate(conv_defs):
         if isinstance(conv_def, Conv):
             layers += [_conv_bn(in_channels, depth(conv_def.depth), conv_def.stride)]
             in_channels = depth(conv_def.depth)
         elif isinstance(conv_def, DepthSepConv):
-            layers += [_conv_dw(in_channels, depth(conv_def.depth), conv_def.stride, use_residual=True)]
+            use_residual = True if idx in [3, 6, 9] else False
+            layers += [_conv_dw(in_channels, depth(conv_def.depth), conv_def.stride, use_residual=use_residual)]
             in_channels = depth(conv_def.depth)
         elif isinstance(conv_def, InvertedResidual):
           for n in range(conv_def.num):

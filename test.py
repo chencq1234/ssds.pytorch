@@ -4,10 +4,10 @@ import sys
 import os
 import argparse
 import numpy as np
-if '/data/software/opencv-3.4.0/lib/python2.7/dist-packages' in sys.path:
-    sys.path.remove('/data/software/opencv-3.4.0/lib/python2.7/dist-packages')
-if '/data/software/opencv-3.3.1/lib/python2.7/dist-packages' in sys.path:
-    sys.path.remove('/data/software/opencv-3.3.1/lib/python2.7/dist-packages')
+if '/data/software/opencv-3.4.0/prlib/python2.7/dist-packages' in sys.path:
+    sys.path.remove('/data/software/opencv-3.4.0/prlib/python2.7/dist-packages')
+if '/data/software/opencv-3.3.1/prlib/python2.7/dist-packages' in sys.path:
+    sys.path.remove('/data/software/opencv-3.3.1/prlib/python2.7/dist-packages')
 import cv2
 from datetime import datetime
 
@@ -25,11 +25,15 @@ def parse_args():
     """
     parser = argparse.ArgumentParser(description='Train a ssds.pytorch network')
     parser.add_argument('--cfg', dest='config_file',
-            help='optional config file', default=None, type=str)
+            # help='optional config file', default="./experiments/cfgs/yolo_v3_mobilenetv1_voc-0.5.yml", type=str)
+            # help='optional config file', default="./experiments/cfgs/yolo_v3_mobilenetv1_voc-lite-0.5.yml", type=str)
+            help='optional config file', default="./experiments/cfgs/yolo_v3_mobilenetv1_voc.yml", type=str)
 
-    if len(sys.argv) == 1:
-        parser.print_help()
-        sys.exit(1)
+            # help='optional config file', default="./experiments/cfgs/yolo_v3_mobilenetv2_voc.yml", type=str)
+
+    # if len(sys.argv) == 1:
+    #     parser.print_help()
+    #     sys.exit(1)
 
     args = parser.parse_args()
     return args

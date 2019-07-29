@@ -39,9 +39,9 @@ POST_PROCESS:
 
 DATASET:
   DATASET: 'voc'
-  DATASET_DIR: './data/VOCdevkit'
-  TRAIN_SETS: [['2007', 'trainval'], ['2012', 'trainval']]
-  TEST_SETS:  [['2007', 'test']]
+  DATASET_DIR: '/data-private/nas/pspace/4582data0522/VOCdevkitParking4582ex2-20sted-crop256'
+  TRAIN_SETS: [['4582', 'trainval']]
+  TEST_SETS:  [['4582', 'test']]
   PROB: 0.6
 
 EXP_DIR: './experiments/models/ssd_mobilenet_v2_voc'

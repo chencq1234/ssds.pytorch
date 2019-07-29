@@ -1,14 +1,22 @@
 MODEL:
   SSDS: yolo_v3
-  NETS: mobilenet_v1
-  IMAGE_SIZE: [416, 416]
+  NETS: mobilenet_v1_lite_050
+  IMAGE_SIZE: [1280, 256]
   NUM_CLASSES: 2
-  FEATURE_LAYER: [[['B','B','B'], [11,'B','B','B'], [5,'B','B','B']],
-                  [[1024,1024,1024], [256, 512, 512, 512], [128, 256, 256, 256]]]
-  SIZES: [[416, 416], [416, 416], [416, 416]]
+#  FEATURE_LAYER: [[["dw"], [5], [3]],
+  FEATURE_LAYER: [[["dw"], [7], [4]],
+                  [[64], [64], [64]]]
+#  FEATURE_LAYER: [[['B','B','B'], [5,'B','B','B'], [3,'B','B','B']],
+#                  [[128, 256, 256], [128, 256, 256, 256], [128, 256, 256, 256]]]
+#  FEATURE_LAYER: [[['B','B','B'], [11,'B','B','B'], [5,'B','B','B']],
+#                  [[1024,1024,1024], [256, 512, 512, 512], [128, 256, 256, 256]]]
+#  SIZES: [[416, 416], [416, 416], [416, 416]]
+  SIZES: [[1280, 256], [1280, 256], [1280, 256]]
   ASPECT_RATIOS: [[[0.192,0.26], [0.283,0.262], [0.32,0.46],[0.29,0.37],[0.2365,0.4027]],
                 [[0.12,0.14], [0.156,0.12], [0.194,0.148],[0.173,0.235],[0.21,0.19]],
                 [[0.174,0.099], [0.124,0.09], [0.0842,0.0835], [0.159,0.074], [0.191,0.140]], ]
+
+#                [[0.166,0.085], [0.124,0.09], [0.0842,0.0835], [0.0486,0.2097], [0.0968,0.197]], ]
 #  ASPECT_RATIOS: [[[0.192,0.26], [0.283,0.262], [0.32,0.46]],
 #                [[0.12,0.14], [0.156,0.12], [0.199,0.119]],
 #                [[0.16,0.08], [0.12,0.09], [0.082,0.082]], ]
@@ -17,8 +25,8 @@ MODEL:
 #                  [[0.024,0.031], [0.038,0.072], [0.079,0.055]], ]
 
 TRAIN:
-  MAX_EPOCHS: 100
-  CHECKPOINTS_EPOCHS: 1
+  MAX_EPOCHS: 1000
+  CHECKPOINTS_EPOCHS: 10
   BATCH_SIZE: 32
   TRAINABLE_SCOPE: 'base,extras,loc,conf'
   RESUME_SCOPE: 'base,extras,loc,conf'
@@ -33,7 +41,7 @@ TRAIN:
 
 TEST:
   BATCH_SIZE: 64
-  TEST_SCOPE: [100, 100]
+  TEST_SCOPE: [1000, 1000]
 
 MATCHER:
   MATCHED_THRESHOLD: 0.5
@@ -42,7 +50,7 @@ MATCHER:
 
 POST_PROCESS:
   SCORE_THRESHOLD: 0.01
-  IOU_THRESHOLD: 0.6
+  IOU_THRESHOLD: 0.5
   MAX_DETECTIONS: 100
 
 DATASET:
@@ -51,10 +59,13 @@ DATASET:
 #  TRAIN_SETS: [['2007', 'trainval'], ['2012', 'trainval']]
   TRAIN_SETS: [['4582', 'trainval']]
   TEST_SETS:  [['4582', 'test']]
-  PROB: 0.6
+  PROB: 0.5
 
-EXP_DIR: '/data-private/nas/pspace/tiPytorchFile/yolov3_mbv1-100-voc'
-LOG_DIR: '/data-private/nas/pspace/tiPytorchFile/yolov3_mbv1-100-voc'
+EXP_DIR: '/data-private/nas/pspace/tiPytorchFile/yolov3_mobilenetv1_voc-lite-0.5'
+LOG_DIR: '/data-private/nas/pspace/tiPytorchFile/yolov3_mobilenetv1_voc-lite-0.5'
 #RESUME_CHECKPOINT: '/data-private/nas/pspace/tiPytorchFile/mobilenet_v2_yolo_v3_voc_75.8.pth'
+#RESUME_CHECKPOINT: '/data-private/nas/pspace/tiPytorchFile/model_save-mbv1-1/yolo_v3_mobilenet_v1_050_voc_epoch_495.pth'
+#RESUME_CHECKPOINT: '/data-private/nas/pspace/tiPytorchFile/mobilenetv1_voc-lite-0.5-07032330/yolo_v3_mobilenet_v1_lite_050_voc_epoch_1000.pth'
 RESUME_CHECKPOINT: ''
-PHASE: ['train', 'test']
+#PHASE: ['train']
+PHASE: ['train','test']

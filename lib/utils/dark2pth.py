@@ -386,6 +386,6 @@ if __name__ == '__main__':
                         [[1024,1024,1024], [256, 512, 512, 512], [128, 256, 256, 256]]]
     mbox_v3 = [3, 3, 3]
 
-    yolo_v3 = build_yolo_v3(darknet_53, feature_layer_v3, mbox_v3, 81)
+    yolo_v3 = build_yolo_v3(darknet_53, feature_layer_v3, mbox_v3, 2)
     yolo_v3 = yolo2pth(yolo_v3, './weights/dark/yolov3.cfg', './weights/dark/yolov3.weights')
     torch.save(yolo_v3.state_dict(), './weights/dark/yolov3.pth')

@@ -30,9 +30,9 @@ class YOLO(nn.Module):
         self.conf = nn.ModuleList(head[1])
         self.softmax = nn.Softmax(dim=-1)
 
-        self.feature_layer = [ f for feature in feature_layer[0] for f in feature]
+        self.feature_layer = [f for feature in feature_layer[0] for f in feature]
         # self.feature_index = [ len(feature) for feature in feature_layer[0]]
-        self.feature_index = list()
+        self.feature_index = list()  # 记录在feature_layer中route层 如[2,6,10]
         s = -1
         for feature in feature_layer[0]:
             s += len(feature)
@@ -59,7 +59,7 @@ class YOLO(nn.Module):
             feature:
                 the features maps of the feature extractor
         """
-        cat = dict()
+        cat = dict()  # 将route层对应bankbone([V1_CONV_DEFS]或其他bankbone) 的层输出，存入cat
         sources, loc, conf = [list() for _ in range(3)]
 
         # apply bases layers and cache source layer outputs
@@ -72,16 +72,16 @@ class YOLO(nn.Module):
         # apply extra layers and cache source layer outputs
         for k, v in enumerate(self.extras):
             if isinstance(self.feature_layer[k], int):
-                x = v(x, cat[self.feature_layer[k]])
+                x = v(x, cat[self.feature_layer[k]])   # 如果到达route层，则进行对应up--concat操作,以利用浅层信息
             else:
                 x = v(x)
             if k in self.feature_index:
-                sources.append(x)
+                sources.append(x)  # 在route层前，输出feature map到source
 
         if phase == 'feature':
-            return sources
+            return sources   # 对应多个尺度，多个通道的feature map
 
-        # apply multibox head to source layers
+        # apply multibox head to source layers  通过self.loc控制对应每个feature map对应loc最后的通道数为4*box_num
         for (x, l, c) in zip(sources, self.loc, self.conf):
             loc.append(l(x).permute(0, 2, 3, 1).contiguous())
             conf.append(c(x).permute(0, 2, 3, 1).contiguous())
@@ -91,6 +91,7 @@ class YOLO(nn.Module):
         if phase == 'eval':
             output = (
                 loc.view(loc.size(0), -1, 4),                   # loc preds
+                # conf.view(conf.size(0), -1, self.num_classes),
                 self.softmax(conf.view(-1, self.num_classes)),  # conf preds
             )
         else:
@@ -102,6 +103,16 @@ class YOLO(nn.Module):
 
 
 def add_extras(base, feature_layer, mbox, num_classes, version):
+    """
+
+    :param base: backbone
+    :param feature_layer: feature_layer[0]:[['B','B','B'], [5,'B','B','B'], [3,'B','B','B']],   related bock
+                    feature_layer[1]: [[1024,1024,1024], [256, 512, 512, 512], [128, 256, 256, 256]] related channel
+    :param mbox: [3,3,3] control each layer box num
+    :param num_classes:
+    :param version:
+    :return:
+    """
     extra_layers = []
     loc_layers = []
     conf_layers = []
@@ -113,6 +124,9 @@ def add_extras(base, feature_layer, mbox, num_classes, version):
                 in_channels = depth
             elif layer == 'B':
                 extra_layers += [ _conv_block(in_channels, depth) ]
+                in_channels = depth
+            elif layer == 'dw':
+                extra_layers += [ _conv_dw(in_channels, depth) ]
                 in_channels = depth
             elif isinstance(layer, int):
                 if version == 'v2':
@@ -157,6 +171,31 @@ class _conv_block(nn.Module):
 
     def forward(self, x):
         return self.conv(x)
+
+class _conv_dw(nn.Module):
+    def __init__(self, inp, oup, stride=1, use_residual=False):
+        super(_conv_dw, self).__init__()
+
+        self.conv = nn.Sequential(
+            # dw
+            nn.Conv2d(inp, inp, 3, stride, 1, groups=inp, bias=False),
+            nn.BatchNorm2d(inp),
+            nn.ReLU(inplace=True),
+            # pw
+            nn.Conv2d(inp, oup, 1, 1, 0, bias=False),
+            nn.BatchNorm2d(oup),
+            nn.ReLU(inplace=True),
+        )
+        self.depth = oup
+        self.inp = inp
+        self.use_residual = use_residual
+        self.stride = stride
+        # self.downsample = downsample
+    def forward(self, x):
+        if self.use_residual and self.stride == 1 and self.inp == self.depth:
+            return self.conv(x) + x
+        else:
+            return self.conv(x)
 
 
 class _router_v2(nn.Module):
@@ -221,14 +260,21 @@ def build_yolo_v3(base, feature_layer, mbox, num_classes):
 
 if __name__ == '__main__':
 
-    feature_layer_v2 = [[['', '',12, '']], [[1024, 1024, 64, 1024]]]
+    # feature_layer_v2 = [[['', '',12, '']], [[1024, 1024, 64, 1024]]]
     mbox_v2 = [5]
-    feature_layer_v3 = [[['B','B','B'], [23,'B','B','B'], [14,'B','B','B']],
-                        [[1024,1024,1024], [256, 512, 512, 512], [128, 256, 256, 256]]]
+    feature_layer_v3 = [[["dw"], [5], [3]],
+                  [[64], [64], [64]]]
+    # feature_layer_v3 = [[['B','B','B'], [5,'B','B','B'], [3,'B','B','B']],
+    #               [[256,256,256], [128, 256, 256, 256], [128, 256, 256, 256]]]
+    # feature_layer_v3 = [[['B','B','B'], [11,'B','B','B'], [5,'B','B','B']],
+    #               [[1024,1024,1024], [256, 512, 512, 512], [128, 256, 256, 256]]]
+    # feature_layer_v3 = [[['B','B','B'], [23,'B','B','B'], [14,'B','B','B']],
+    #                     [[1024,1024,1024], [256, 512, 512, 512], [128, 256, 256, 256]]]
     mbox_v3 = [3, 3, 3]
 
     from lib.modeling.nets.darknet import *
-
+    # from prlib.modeling.nets.mobilenet import *
+    from lib.modeling.nets.mobilenet_lite import *
     # yolo_v2 = build_yolo_v2(darknet_19, feature_layer_v2, mbox_v2, 81)
     # # print('yolo_v2', yolo_v2)
     # yolo_v2.eval()
@@ -239,15 +285,35 @@ if __name__ == '__main__':
     # out = yolo_v2(x, phase='eval')
 
 
-    yolo_v3 = build_yolo_v3(darknet_53, feature_layer_v3, mbox_v3, 81)
+    # yolo_v3 = build_yolo_v3(darknet_53, feature_layer_v3, mbox_v3, 1)
+    yolo_v3 = build_yolo_v3(mobilenet_v1_050, feature_layer_v3, mbox_v3, 1)
     print('yolo_v3', yolo_v3)
+
+    # num_params = 0
+    # print("%40s %20s  %30s" % ("name", "sum params num", "pre params num"))
+    # for name, param in yolo_v3.named_parameters():
+    #     num_params += param.numel()
+    #     # print(name, param.size(), param.numel())
+    #     print("%40s %20s  %30s" % (name, num_params, param.numel()))
     # print(yolo_v3.feature_layer, yolo_v3.feature_index)
     yolo_v3.eval()
     x = torch.rand(1, 3, 416, 416)
+
     x = torch.autograd.Variable(x, volatile=True) #.cuda()
+    # from prlib.utils.network import print_layers
+    # print_layers(yolo_v3.cuda(), x, "yolov3", 1)
     feature_maps = yolo_v3(x, phase='feature')
     # print([(o.size()[2], o.size()[3]) for o in feature_maps])
     out = yolo_v3(x, phase='eval')
     # print(set(yolo_v3.state_dict()))
     print(set(yolo_v3.base[0].conv[1].state_dict()))
+
+    yolo_v3.train(False)
+    torch_out = torch.onnx._export(yolo_v3,  # model being run
+                       x,  # model input (or a tuple for multiple inputs)
+                       "/data-private/nas/pspace/tiPytorchFile/mobilenetv1_voc-lite-0.5/graph.onnx",
+                       export_params=True)
+    print("finished")
+    from lib.utils.torchsummary import summary
+    summary(yolo_v3.cuda(), (3, 416, 416))
 

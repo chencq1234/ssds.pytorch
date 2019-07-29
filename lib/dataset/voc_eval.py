@@ -126,12 +126,14 @@ def voc_eval(detpath,
     # extract gt objects for this class
     class_recs = {}
     npos = 0
+    all_pos = 0
     for imagename in imagenames:
         R = [obj for obj in recs[imagename] if obj['name'] == classname]
         bbox = np.array([x['bbox'] for x in R])
         difficult = np.array([x['difficult'] for x in R]).astype(np.bool)
         det = [False] * len(R)
         npos = npos + sum(~difficult)
+        all_pos += len(R)
         class_recs[imagename] = {'bbox': bbox,
                                  'difficult': difficult,
                                  'det': det}
@@ -146,10 +148,13 @@ def voc_eval(detpath,
     confidence = np.array([float(x[1]) for x in splitlines])
     BB = np.array([[float(z) for z in x[2:]] for x in splitlines])
 
-        # sort by confidence
+    # sort by confidence
     sorted_ind = np.argsort(-confidence)
     sorted_scores = np.sort(-confidence)
-    BB = BB[sorted_ind, :]
+    try:
+        BB = BB[sorted_ind, :]
+    except Exception as exp:
+        print(exp)
     image_ids = [image_ids[x] for x in sorted_ind]
 
         # go down dets and mark TPs and FPs
@@ -183,7 +188,8 @@ def voc_eval(detpath,
             jmax = np.argmax(overlaps)
 
         if ovmax > ovthresh:
-            if not R['difficult'][jmax]:
+            # if not R['difficult'][jmax]:
+            if 1:
                 if not R['det'][jmax]:
                     tp[d] = 1.
                     R['det'][jmax] = 1
@@ -195,7 +201,8 @@ def voc_eval(detpath,
         # compute precision recall
     fp = np.cumsum(fp)
     tp = np.cumsum(tp)
-    rec = tp / float(npos)
+    # rec = tp / float(npos)
+    rec = tp / float(all_pos)
         # avoid divide by zero in case the first detection matches a difficult
         # ground truth
     prec = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)

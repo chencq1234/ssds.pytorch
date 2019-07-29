@@ -1,19 +1,25 @@
 MODEL:
   SSDS: yolo_v3
   NETS: mobilenet_v1
-  IMAGE_SIZE: [416, 416]
-  NUM_CLASSES: 81
+  IMAGE_SIZE: [512, 512]
+#  IMAGE_SIZE: [416, 416]
+  NUM_CLASSES: 2
   FEATURE_LAYER: [[['B','B','B'], [11,'B','B','B'], [5,'B','B','B']],
                   [[1024,1024,1024], [256, 512, 512, 512], [128, 256, 256, 256]]]
-  SIZES: [[416, 416], [416, 416], [416, 416]]
-  ASPECT_RATIOS: [[[0.278,0.216], [0.375,0.475], [0.896,0.783]],
-                  [[0.072,0.146], [0.146,0.108], [0.141,0.286]],
-                  [[0.024,0.031], [0.038,0.072], [0.079,0.055]], ]
+#  SIZES: [[416, 416], [416, 416], [416, 416]]
+  SIZES: [[512, 512], [512, 512], [512, 512]]
+  ASPECT_RATIOS: [[[0.192,0.26], [0.283,0.262], [0.32,0.46],[0.29,0.37],[0.2365,0.4027]],
+                [[0.12,0.14], [0.156,0.12], [0.194,0.148],[0.173,0.235],[0.21,0.19]],
+                [[0.174,0.099], [0.124,0.09], [0.0842,0.0835], [0.159,0.074], [0.191,0.140]], ]
+#  ASPECT_RATIOS: [[[0.278,0.216], [0.375,0.475], [0.896,0.783]],
+#                  [[0.072,0.146], [0.146,0.108], [0.141,0.286]],
+#                  [[0.024,0.031], [0.038,0.072], [0.079,0.055]], ]
 
 TRAIN:
   MAX_EPOCHS: 100
   CHECKPOINTS_EPOCHS: 1
-  BATCH_SIZE: 16
+  BATCH_SIZE: 32
+#  BATCH_SIZE: 1 # 16
   TRAINABLE_SCOPE: 'base,extras,loc,conf'
   RESUME_SCOPE: 'base,extras,loc,conf'
   OPTIMIZER:
@@ -26,7 +32,8 @@ TRAIN:
     WARM_UP_EPOCHS: 60
 
 TEST:
-  BATCH_SIZE: 64
+#  BATCH_SIZE: 1 # 64
+  BATCH_SIZE: 64 # 64
   TEST_SCOPE: [90, 100]
 
 MATCHER:
@@ -41,12 +48,19 @@ POST_PROCESS:
 
 DATASET:
   DATASET: 'coco'
-  DATASET_DIR: './data/COCO'
-  TRAIN_SETS: [['2017', 'train']]
-  TEST_SETS:  [['2017', 'val']]
+  DATASET_DIR: '/data-private/nas/pspace/COCO4582data-ssds/coco'
+  #TRAIN_SETS: [['2007', 'trainval'], ['2012', 'trainval']]
+  TRAIN_SETS: [['4582', 'trainval']]
+  TEST_SETS:  [['4582', 'test']]
+#  DATASET_DIR: './data/COCO'
+#  TRAIN_SETS: [['2017', 'train']]
+#  TEST_SETS:  [['2017', 'val']]
   PROB: 0.6
 
-EXP_DIR: './experiments/models/yolo_v3_mobilenetv1_coco'
-LOG_DIR: './experiments/models/yolo_v3_mobilenetv1_coco'
-RESUME_CHECKPOINT: './weights/yolo/mobilenet_v1_yolo_v3_coco_25.7.pth'
-PHASE: ['test']
+EXP_DIR: '/data-private/nas/pspace/tiPytorchFile/yolov3_mobilenetv1_coco-lite-0.5'
+LOG_DIR: '/data-private/nas/pspace/tiPytorchFile/yolov3_mobilenetv1_coco-lite-0.5'
+#RESUME_CHECKPOINT: '/data-private/nas/pspace/tiPytorchFile/mobilenet_v2_yolo_v3_voc_75.8.pth'
+#RESUME_CHECKPOINT: '/data-private/nas/pspace/tiPytorchFile/mobilenetv1_voc-lite-0.5-07032330/yolo_v3_mobilenet_v1_lite_050_voc_epoch_1000.pth'
+RESUME_CHECKPOINT: ''
+#PHASE: ['train']
+PHASE: ['train','test']

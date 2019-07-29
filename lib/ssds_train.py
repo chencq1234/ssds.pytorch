@@ -5,7 +5,7 @@ import sys
 import cv2
 import random
 import pickle
-
+from lib.param_summary import torch_summarize_df
 import torch
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
@@ -24,16 +24,51 @@ from lib.dataset.dataset_factory import load_data
 from lib.utils.config_parse import cfg
 from lib.utils.eval_utils import *
 from lib.utils.visualize_utils import *
+from lib.dataset.voc import VOC_CLASSES
+import logging
+import time
+
+# os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,7"  # "0,1,2,3,4,5,6,7"
+
+# ##############################  plot path and num  #################################################################
+def creat_log(cfg, phase="train"):
+    now = time.strftime('%Y%m%d_%H%M', time.localtime(time.time()))
+
+    if phase == "train":
+        cfg['EXP_DIR'] = "".join([cfg['EXP_DIR'], "-", now])
+        cfg['LOG_DIR'] = "".join([cfg['LOG_DIR'], "-", now])
+
+    path = os.path.join(cfg['LOG_DIR'], ''.join([cfg["CHECKPOINTS_PREFIX"], now, ".txt"]))
+    print("log path is:\n %s" % path)
+    if not os.path.exists(cfg['LOG_DIR']):
+        os.makedirs(cfg['LOG_DIR'])
+        print(cfg['LOG_DIR'] + ' --creat dir successfully')
+    else:
+        print(cfg['LOG_DIR'] + ' --dir already exist')
+
+    logging.basicConfig(level=logging.INFO,
+                        filename=path,
+                        filemode='w',
+                        # format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s'
+                        )
+    return now
+# ##############################  end  #############################################################################
+
 
 class Solver(object):
     """
     A wrapper class for the training process
     """
-    def __init__(self):
+    def __init__(self, phase="train"):
         self.cfg = cfg
-
-        # Load data
+        creat_log(self.cfg, phase=phase)
+        for k, v in cfg.items():
+            print(k, ": ", v)
+            log_str = '\rEpoch {k}: {v}'.format(k=k, v=v)
+            logging.info(log_str)
+            # Load data
         print('===> Loading data')
+        logging.info('===> Loading data')
         self.train_loader = load_data(cfg.DATASET, 'train') if 'train' in cfg.PHASE else None
         self.eval_loader = load_data(cfg.DATASET, 'eval') if 'eval' in cfg.PHASE else None
         self.test_loader = load_data(cfg.DATASET, 'test') if 'test' in cfg.PHASE else None
@@ -41,23 +76,52 @@ class Solver(object):
 
         # Build model
         print('===> Building model')
+        logging.info('===> Building model')
         self.model, self.priorbox = create_model(cfg.MODEL)
         self.priors = Variable(self.priorbox.forward(), volatile=True)
         self.detector = Detect(cfg.POST_PROCESS, self.priors)
+        os.makedirs(self.cfg['EXP_DIR'], exist_ok=True)
 
         # Utilize GPUs for computation
         self.use_gpu = torch.cuda.is_available()
+        print('Model architectures:\n{}\n'.format(self.model))
+        logging.info('Model architectures:\n{}\n'.format(self.model))
+
+        from lib.utils.torchsummary import summary
+        summary_text = summary(self.model.cuda(), (3,  cfg.MODEL.IMAGE_SIZE[0], cfg.MODEL.IMAGE_SIZE[1]))
+        logging.info('\n'.join(summary_text))
+        # num_params = 0
+        # for name, param in self.model.named_parameters():
+        #     num_params += param.numel()
+        #     # print(name, param.size(), param.numel())
+        #     print("%40s %20s  %20s" % (name, num_params, param.numel()))
+        # print(num_params/1e4)
+        # df = torch_summarize_df(input_size=(3, 512, 512), model=self.model)
+        # # df['name'], list(df['class_name']), df['input_shape'], df["output_shape"], list(df['nb_params'])
+        # print(df)
+        # for name, param in self.model.named_parameters():
+        #     print(name, param.size())
+        # from thop import profile
+        #
+        # flops, params = profile(self.model, input_size=(1, 3, 512, 128))
+        # count = 0
+        # for p in self.model.parameters():
+        #     count += p.data.nelement()
         if self.use_gpu:
             print('Utilize GPUs for computation')
-            print('Number of GPU available', torch.cuda.device_count())
+            logging.info('Utilize GPUs for computation')
+            # print('Number of GPU available', torch.cuda.device_count())
             self.model.cuda()
             self.priors.cuda()
             cudnn.benchmark = True
+            # os.environ['CUDA_VISIBLE_DEVICES'] = "4,5,6,7"  # "0,1,2,3,4,5,6,7"
             # if torch.cuda.device_count() > 1:
+            #     self.model = torch.nn.DataParallel(self.model)
+            #     cudnn.benchmark = True
                 # self.model = torch.nn.DataParallel(self.model).module
 
         # Print the model architecture and parameters
-        print('Model architectures:\n{}\n'.format(self.model))
+
 
         # print('Parameters and size:')
         # for name, param in self.model.named_parameters():
@@ -65,6 +129,7 @@ class Solver(object):
 
         # print trainable scope
         print('Trainable scope: {}'.format(cfg.TRAIN.TRAINABLE_SCOPE))
+        logging.info('Trainable scope: {}'.format(cfg.TRAIN.TRAINABLE_SCOPE))
         trainable_param = self.trainable_param(cfg.TRAIN.TRAINABLE_SCOPE)
         self.optimizer = self.configure_optimizer(trainable_param, cfg.TRAIN.OPTIMIZER)
         self.exp_lr_scheduler = self.configure_lr_scheduler(self.optimizer, cfg.TRAIN.LR_SCHEDULER)
@@ -74,7 +139,7 @@ class Solver(object):
         self.criterion = MultiBoxLoss(cfg.MATCHER, self.priors, self.use_gpu)
 
         # Set the logger
-        self.writer = SummaryWriter(log_dir=cfg.LOG_DIR)
+        self.writer = SummaryWriter(logdir=cfg.LOG_DIR)
         self.output_dir = cfg.EXP_DIR
         self.checkpoint = cfg.RESUME_CHECKPOINT
         self.checkpoint_prefix = cfg.CHECKPOINTS_PREFIX
@@ -89,9 +154,11 @@ class Solver(object):
             filename = self.checkpoint_prefix + '_epoch_{:d}'.format(epochs) + '.pth'
         filename = os.path.join(self.output_dir, filename)
         torch.save(self.model.state_dict(), filename)
+        # torch.save(self.model, filename)
         with open(os.path.join(self.output_dir, 'checkpoint_list.txt'), 'a') as f:
             f.write('epoch {epoch:d}: {filename}\n'.format(epoch=epochs, filename=filename))
         print('Wrote snapshot to: {:s}'.format(filename))
+        logging.info('Wrote snapshot to: {:s}'.format(filename))
 
         # TODO: write relative cfg under the same page
 
@@ -100,6 +167,7 @@ class Solver(object):
             print(("=> no checkpoint found at '{}'".format(resume_checkpoint)))
             return False
         print(("=> loading checkpoint '{:s}'".format(resume_checkpoint)))
+        logging.info(("=> loading checkpoint '{:s}'".format(resume_checkpoint)))
         checkpoint = torch.load(resume_checkpoint)
 
         # print("=> Weigths in the checkpoints:")
@@ -137,6 +205,7 @@ class Solver(object):
         if resume_scope != '':
             pretrained_dict = {}
             for k, v in list(checkpoint.items()):
+            # for k, v in checkpoint._modules.items():
                 for resume_key in resume_scope.split(','):
                     if resume_key in k:
                         pretrained_dict[k] = v
@@ -153,6 +222,8 @@ class Solver(object):
         if len(unresume_dict) != 0:
             print("=> UNResume weigths:")
             print(unresume_dict)
+            logging.info("=> UNResume weigths:")
+            logging.info(unresume_dict)
 
         checkpoint.update(pretrained_dict)
 
@@ -191,6 +262,7 @@ class Solver(object):
         #         getattr(self.model, module).apply(self.weights_init)
         if self.checkpoint:
             print('Loading initial model weights from {:s}'.format(self.checkpoint))
+            logging.info('Loading initial model weights from {:s}'.format(self.checkpoint))
             self.resume_checkpoint(self.checkpoint)
 
         start_epoch = 0
@@ -211,6 +283,7 @@ class Solver(object):
         return trainable_param
 
     def train_model(self):
+        self.export_graph()
         previous = self.find_previous()
         if previous:
             start_epoch = previous[0][-1]
@@ -223,6 +296,7 @@ class Solver(object):
 
         # warm_up epoch
         warm_up = self.cfg.TRAIN.LR_SCHEDULER.WARM_UP_EPOCHS
+        aps_list, map_list = [], []
         for epoch in iter(range(start_epoch+1, self.max_epochs+1)):
             #learning rate
             sys.stdout.write('\rEpoch {epoch:d}/{max_epochs:d}:\n'.format(epoch=epoch, max_epochs=self.max_epochs))
@@ -233,14 +307,24 @@ class Solver(object):
             if 'eval' in cfg.PHASE:
                 self.eval_epoch(self.model, self.eval_loader, self.detector, self.criterion, self.writer, epoch, self.use_gpu)
             if 'test' in cfg.PHASE:
-                self.test_epoch(self.model, self.test_loader, self.detector, self.output_dir, self.use_gpu)
+                # if epoch % 20 != 10:
+                #     continue
+                aps, map = self.test_epoch(self.model, self.test_loader, self.detector, self.output_dir, self.use_gpu, epoch)
+                aps_list.append(aps)
+                map_list.append(map)
+                max_idx1 = np.argmax(np.array(aps_list)[:, 0])
+                max_map_idx = np.argmax(np.array(map_list))
+                print("ap1 max: %f , epoch is: %d" % (aps_list[max_idx1][0], start_epoch+1+max_idx1))
+                print("map max: %f , epoch is: %d" % (map_list[max_map_idx], start_epoch+1+max_map_idx))
+                logging.info("ap1 max: %f , epoch is: %d" % (aps_list[max_idx1][0], start_epoch+1+max_idx1))
+                logging.info("map max: %f , epoch is: %d" % (map_list[max_map_idx], start_epoch+1+max_map_idx))
             if 'visualize' in cfg.PHASE:
                 self.visualize_epoch(self.model, self.visualize_loader, self.priorbox, self.writer, epoch,  self.use_gpu)
 
-            if epoch % cfg.TRAIN.CHECKPOINTS_EPOCHS == 0:
+            if epoch % cfg.TRAIN.CHECKPOINTS_EPOCHS == 0 or start_epoch+1+max_idx1 == epoch:
                 self.save_checkpoints(epoch)
 
-    def test_model(self):
+    def test_model(self, need_pr=True):
         previous = self.find_previous()
         if previous:
             for epoch, resume_checkpoint in zip(previous[0], previous[1]):
@@ -250,16 +334,17 @@ class Solver(object):
                     if 'eval' in cfg.PHASE:
                         self.eval_epoch(self.model, self.eval_loader, self.detector, self.criterion, self.writer, epoch, self.use_gpu)
                     if 'test' in cfg.PHASE:
-                        self.test_epoch(self.model, self.test_loader, self.detector, self.output_dir , self.use_gpu)
+                        self.test_epoch(self.model, self.test_loader, self.detector, self.output_dir , self.use_gpu, epoch, need_pr)
                     if 'visualize' in cfg.PHASE:
                         self.visualize_epoch(self.model, self.visualize_loader, self.priorbox, self.writer, epoch,  self.use_gpu)
         else:
             sys.stdout.write('\rCheckpoint {}:\n'.format(self.checkpoint))
             self.resume_checkpoint(self.checkpoint)
+            epoch = self.checkpoint.split('_')[-1].replace(".pth", "")
             if 'eval' in cfg.PHASE:
                 self.eval_epoch(self.model, self.eval_loader, self.detector, self.criterion, self.writer, 0, self.use_gpu)
             if 'test' in cfg.PHASE:
-                self.test_epoch(self.model, self.test_loader, self.detector, self.output_dir , self.use_gpu)
+                self.test_epoch(self.model, self.test_loader, self.detector, self.output_dir , self.use_gpu, epoch, need_pr)
             if 'visualize' in cfg.PHASE:
                 self.visualize_epoch(self.model, self.visualize_loader, self.priorbox, self.writer, 0,  self.use_gpu)
 
@@ -275,6 +360,7 @@ class Solver(object):
         _t = Timer()
 
         for iteration in iter(range((epoch_size))):
+            # if iteration > 8: break# print("iteration:", iteration)
             images, targets = next(batch_iterator)
             if use_gpu:
                 images = Variable(images.cuda())
@@ -291,7 +377,8 @@ class Solver(object):
             loss_l, loss_c = criterion(out, targets)
 
             # some bugs in coco train2017. maybe the annonation bug.
-            if loss_l.data[0] == float("Inf"):
+            # if loss_l.data[0] == float("Inf"):
+            if loss_l.data.item() == float("Inf"):
                 continue
 
             loss = loss_l + loss_c
@@ -299,16 +386,17 @@ class Solver(object):
             optimizer.step()
 
             time = _t.toc()
-            loc_loss += loss_l.data[0]
-            conf_loss += loss_c.data[0]
+            loc_loss += loss_l.data.item()
+            conf_loss += loss_c.data.item()
 
             # log per iter
-            log = '\r==>Train: || {iters:d}/{epoch_size:d} in {time:.3f}s [{prograss}] || loc_loss: {loc_loss:.4f} cls_loss: {cls_loss:.4f}\r'.format(
+            log = '\r==>Train: || epoch: {epoch:4d} || {iters:4d}/{epoch_size:d} in {time:.3f}s [{prograss}] || loc_loss: {loc_loss:.4f} cls_loss: {cls_loss:.4f}\r'.format(
                     prograss='#'*int(round(10*iteration/epoch_size)) + '-'*int(round(10*(1-iteration/epoch_size))), iters=iteration, epoch_size=epoch_size,
-                    time=time, loc_loss=loss_l.data[0], cls_loss=loss_c.data[0])
-
-            sys.stdout.write(log)
-            sys.stdout.flush()
+                    time=time, loc_loss=loss_l.data.item(), cls_loss=loss_c.data.item(), epoch=epoch)
+            print(log)
+            logging.info(log)
+            # sys.stdout.write(log)
+            # sys.stdout.flush()
 
         # log per epoch
         sys.stdout.write('\r')
@@ -316,6 +404,7 @@ class Solver(object):
         lr = optimizer.param_groups[0]['lr']
         log = '\r==>Train: || Total_time: {time:.3f}s || loc_loss: {loc_loss:.4f} conf_loss: {conf_loss:.4f} || lr: {lr:.6f}\n'.format(lr=lr,
                 time=_t.total_time, loc_loss=loc_loss/epoch_size, conf_loss=conf_loss/epoch_size)
+        logging.info(log)
         sys.stdout.write(log)
         sys.stdout.flush()
 
@@ -368,14 +457,14 @@ class Solver(object):
             # evals
             label, score, npos, gt_label = cal_tp_fp(detections, targets, label, score, npos, gt_label)
             size = cal_size(detections, targets, size)
-            loc_loss += loss_l.data[0]
-            conf_loss += loss_c.data[0]
+            loc_loss += loss_l.data.item()
+            conf_loss += loss_c.data.item()
 
             # log per iter
             log = '\r==>Eval: || {iters:d}/{epoch_size:d} in {time:.3f}s [{prograss}] || loc_loss: {loc_loss:.4f} cls_loss: {cls_loss:.4f}\r'.format(
                     prograss='#'*int(round(10*iteration/epoch_size)) + '-'*int(round(10*(1-iteration/epoch_size))), iters=iteration, epoch_size=epoch_size,
-                    time=time, loc_loss=loss_l.data[0], cls_loss=loss_c.data[0])
-
+                    time=time, loc_loss=loss_l.data.item(), cls_loss=loss_c.data.item())
+            logging.info(log)
             sys.stdout.write(log)
             sys.stdout.flush()
 
@@ -387,6 +476,7 @@ class Solver(object):
         sys.stdout.flush()
         log = '\r==>Eval: || Total_time: {time:.3f}s || loc_loss: {loc_loss:.4f} conf_loss: {conf_loss:.4f} || mAP: {mAP:.6f}\n'.format(mAP=ap,
                 time=_t.total_time, loc_loss=loc_loss/epoch_size, conf_loss=conf_loss/epoch_size)
+        logging.info(log)
         sys.stdout.write(log)
         sys.stdout.flush()
 
@@ -460,10 +550,73 @@ class Solver(object):
     #     print('Evaluating detections')
     #     data_loader.dataset.evaluate_detections(all_boxes, output_dir)
 
-
-    def test_epoch(self, model, data_loader, detector, output_dir, use_gpu):
+    def inference(self, model, images_dir, detector, output_dir, use_gpu, epoch, need_pr=None):
         model.eval()
+        images_list = os.listdir(images_dir)
+        num_images = len(images_list)
+        num_classes = detector.num_classes
+        all_boxes = [[[] for _ in range(num_images)] for _ in range(num_classes)]
+        empty_array = np.transpose(np.array([[], [], [], [], []]), (1, 0))
 
+        _t = Timer()
+        if need_pr:
+            pr_path = os.path.join(output_dir, str(epoch))
+            os.makedirs(pr_path, exist_ok=True)
+
+            print("test epoch %s pr result path: %s" %(epoch, pr_path))
+            logging.info("test epoch %s pr result path: %s" %(epoch, pr_path))
+        for i, image in enumerate(images_list):
+            img = cv2.imread(os.path.join(images_dir, image))
+            img_key = image.replace(".jpg", "")
+            scale = [img.shape[1], img.shape[0], img.shape[1], img.shape[0]]
+            # if use_gpu:
+            #     images = Variable(dataset.preproc(img)[0].unsqueeze(0).cuda(), volatile=True)
+            # else:
+            # images = Variable(dataset.preproc(img)[0].unsqueeze(0), volatile=True)
+
+            _t.tic()
+            # forward
+            out = model(img, phase='eval')
+
+            # detect
+            detections = detector.forward(out)
+
+            time = _t.toc()
+
+            # TODO: make it smart:
+            pr_arr = []
+            for j in range(1, num_classes):
+                cls_dets = list()
+                cls_name = VOC_CLASSES[j]
+                for det in detections[0][j]:
+                    if det[0] > 0:
+                        d = det.cpu().numpy()
+                        score, box = d[0], d[1:]
+                        box *= scale
+                        box = np.append(box, score)
+                        cls_dets.append(box)
+                        if need_pr:
+                            det_res4pr = [cls_name] + [str(i) for i in d]
+                            pr_arr.append(' '.join(det_res4pr))
+
+                if len(cls_dets) == 0:
+                    cls_dets = empty_array
+                all_boxes[j][i] = np.array(cls_dets)
+            if need_pr:
+                pr_res_str = '\n'.join(pr_arr)
+                with open(os.path.join(pr_path, img_key + ".txt"), "w") as f:
+                    f.write(pr_res_str)
+            # log per iter
+            log = '\r==>Test: || {iters:d}/{epoch_size:d} in {time:.3f}s [{prograss}]\r'.format(
+                prograss='#' * int(round(10 * i / num_images)) + '-' * int(round(10 * (1 - i / num_images))), iters=i,
+                epoch_size=num_images,
+                time=time)
+            logging.info(log)
+            sys.stdout.write(log)
+            sys.stdout.flush()
+
+    def test_epoch(self, model, data_loader, detector, output_dir, use_gpu, epoch, need_pr=None):
+        model.eval()
         dataset = data_loader.dataset
         num_images = len(dataset)
         num_classes = detector.num_classes
@@ -471,9 +624,14 @@ class Solver(object):
         empty_array = np.transpose(np.array([[],[],[],[],[]]),(1,0))
 
         _t = Timer()
-
-        for i in iter(range((num_images))):
+        if need_pr:
+            pr_path = os.path.join(output_dir, str(epoch))
+            os.makedirs(pr_path, exist_ok=True)
+            print("test epoch %s pr result path:\n %s" % (epoch, pr_path))
+            logging.info("test epoch %s pr result path: %s" % (epoch, pr_path))
+        for i in iter(range(num_images)):
             img = dataset.pull_image(i)
+            img_key = dataset.ids[i][-1]
             scale = [img.shape[1], img.shape[0], img.shape[1], img.shape[0]]
             if use_gpu:
                 images = Variable(dataset.preproc(img)[0].unsqueeze(0).cuda(), volatile=True)
@@ -490,8 +648,10 @@ class Solver(object):
             time = _t.toc()
 
             # TODO: make it smart:
+            pr_arr = []
             for j in range(1, num_classes):
                 cls_dets = list()
+                cls_name = VOC_CLASSES[j]
                 for det in detections[0][j]:
                     if det[0] > 0:
                         d = det.cpu().numpy()
@@ -499,14 +659,23 @@ class Solver(object):
                         box *= scale
                         box = np.append(box, score)
                         cls_dets.append(box)
+                        if need_pr:
+                            det_res4pr = [cls_name] + [str(i) for i in d]
+                            pr_arr.append(' '.join(det_res4pr))
+
+
                 if len(cls_dets) == 0:
                     cls_dets = empty_array
                 all_boxes[j][i] = np.array(cls_dets)
-
+            if need_pr:
+                pr_res_str = '\n'.join(pr_arr)
+                with open(os.path.join(pr_path, img_key+".txt"), "w") as f:
+                    f.write(pr_res_str)
             # log per iter
             log = '\r==>Test: || {iters:d}/{epoch_size:d} in {time:.3f}s [{prograss}]\r'.format(
                     prograss='#'*int(round(10*i/num_images)) + '-'*int(round(10*(1-i/num_images))), iters=i, epoch_size=num_images,
                     time=time)
+            # logging.info(log)
             sys.stdout.write(log)
             sys.stdout.flush()
 
@@ -516,8 +685,9 @@ class Solver(object):
 
         # currently the COCO dataset do not return the mean ap or ap 0.5:0.95 values
         print('Evaluating detections')
-        data_loader.dataset.evaluate_detections(all_boxes, output_dir)
-
+        logging.info('Evaluating detections')
+        aps, map = data_loader.dataset.evaluate_detections(all_boxes, output_dir)
+        return aps, map
 
     def visualize_epoch(self, model, data_loader, priorbox, writer, epoch, use_gpu):
         model.eval()
@@ -545,7 +715,7 @@ class Solver(object):
         base_out = viz_module_feature_maps(writer, model.base, images, module_name='base', epoch=epoch)
         extras_out = viz_module_feature_maps(writer, model.extras, base_out, module_name='extras', epoch=epoch)
         # visualize feature map in feature_extractors
-        viz_feature_maps(writer, model(images, 'feature'), module_name='feature_extractors', epoch=epoch)
+        viz_feature_maps(writer, model.module(images, 'feature'), module_name='feature_extractors', epoch=epoch)
 
         model.train()
         images.requires_grad = True
@@ -586,23 +756,31 @@ class Solver(object):
 
     def export_graph(self):
         self.model.train(False)
+        # torch.save(self.model, os.path.join(self.cfg["EXP_DIR"], "model.pth"))
         dummy_input = Variable(torch.randn(1, 3, cfg.MODEL.IMAGE_SIZE[0], cfg.MODEL.IMAGE_SIZE[1])).cuda()
         # Export the model
+        save_onnx_path = os.path.join(self.cfg["EXP_DIR"], "graph.onnx")
         torch_out = torch.onnx._export(self.model,             # model being run
                                        dummy_input,            # model input (or a tuple for multiple inputs)
-                                       "graph.onnx",           # where to save the model (can be a file or file-like object)
+                                       save_onnx_path,         # where to save the model (can be a file or file-like object)
                                        export_params=True)     # store the trained parameter weights inside the model file
+        print("----------------------------------------------------------------")
+        print("save model to onnx:%s" %save_onnx_path)
+        logging.info("----------------------------------------------------------------")
+        logging.info("save model to onnx:%s" %save_onnx_path)
+
         # if not os.path.exists(cfg.EXP_DIR):
         #     os.makedirs(cfg.EXP_DIR)
         # self.writer.add_graph(self.model, (dummy_input, ))
 
 
 def train_model():
-    s = Solver()
+    s = Solver(phase="train")
+    # s.export_graph()
     s.train_model()
     return True
 
 def test_model():
-    s = Solver()
+    s = Solver(phase="test")
     s.test_model()
     return True

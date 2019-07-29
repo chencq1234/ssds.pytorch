@@ -6,6 +6,56 @@ if torch.cuda.is_available():
     import torch.backends.cudnn as cudnn
     torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
+def bbox_overlaps_giou(bboxes1, bboxes2):
+    """Calculate the gious between each bbox of bboxes1 and bboxes2.
+    Args:
+        bboxes1(ndarray): shape (n, 4)
+        bboxes2(ndarray): shape (k, 4)
+    Returns:
+        gious(ndarray): shape (n, k)
+    """
+
+
+    #bboxes1 = torch.FloatTensor(bboxes1)
+    #bboxes2 = torch.FloatTensor(bboxes2)
+    rows = bboxes1.shape[0]
+    cols = bboxes2.shape[0]
+    ious = torch.zeros((rows, cols))
+    if rows * cols == 0:
+        return ious
+    exchange = False
+    if bboxes1.shape[0] > bboxes2.shape[0]:
+        bboxes1, bboxes2 = bboxes2, bboxes1
+        ious = torch.zeros((cols, rows))
+        exchange = True
+    area1 = (bboxes1[:, 2] - bboxes1[:, 0]) * (
+        bboxes1[:, 3] - bboxes1[:, 1])
+    area2 = (bboxes2[:, 2] - bboxes2[:, 0]) * (
+        bboxes2[:, 3] - bboxes2[:, 1])
+
+    inter_max_xy = torch.min(bboxes1[:, 2:],bboxes2[:, 2:])
+
+    inter_min_xy = torch.max(bboxes1[:, :2],bboxes2[:, :2])
+
+    out_max_xy = torch.max(bboxes1[:, 2:],bboxes2[:, 2:])
+
+    out_min_xy = torch.min(bboxes1[:, :2],bboxes2[:, :2])
+
+    inter = torch.clamp((inter_max_xy - inter_min_xy), min=0)
+    inter_area = inter[:, 0] * inter[:, 1]
+    outer = torch.clamp((out_max_xy - out_min_xy), min=0)
+    outer_area = outer[:, 0] * outer[:, 1]
+    union = area1+area2-inter_area
+    closure = outer_area
+
+    ious = inter_area / union - (closure - union) / closure
+    # ious = inter_area / closure - (union - inter_area) / union
+    ious = torch.clamp(ious,min=-1.0, max = 1.0)
+    #print(ious)
+    if exchange:
+        ious = ious.T
+    return ious
+
 
 def point_form(boxes):
     """ Convert prior_boxes to (xmin, ymin, xmax, ymax)
@@ -71,6 +121,49 @@ def jaccard(box_a, box_b):
               (box_b[:, 3]-box_b[:, 1])).unsqueeze(0).expand_as(inter)  # [A,B]
     union = area_a + area_b - inter
     return inter / union  # [A,B]
+
+def match_gious(threshold, truths, priors, variances, labels, loc_t, conf_t, idx):
+    """Match each prior box with the ground truth box of the highest jaccard
+    overlap, encode the bounding boxes, then return the matched indices
+    corresponding to both confidence and location preds.
+    Args:
+        threshold: (float) The overlap threshold used when mathing boxes.
+        truths: (tensor) Ground truth boxes, Shape: [num_obj, num_priors].
+        priors: (tensor) Prior boxes from priorbox layers, Shape: [n_priors,4].
+        variances: (tensor) Variances corresponding to each prior coord,
+            Shape: [num_priors, 4].
+        labels: (tensor) All the class labels for the image, Shape: [num_obj].
+        loc_t: (tensor) Tensor to be filled w/ endcoded location targets.
+        conf_t: (tensor) Tensor to be filled w/ matched indices for conf preds.
+        idx: (int) current batch index
+    Return:
+        The matched indices corresponding to 1)location and 2)confidence preds.
+    """
+    # jaccard index
+    loc_t[idx] = point_form(priors)
+    overlaps = jaccard(
+        truths,
+        point_form(priors)
+    )
+    # (Bipartite Matching)
+    # [1,num_objects] best prior for each ground truth
+    best_prior_overlap, best_prior_idx = overlaps.max(1, keepdim=True)
+    # [1,num_priors] best ground truth for each prior
+    best_truth_overlap, best_truth_idx = overlaps.max(0, keepdim=True)
+    best_truth_idx.squeeze_(0)
+    best_truth_overlap.squeeze_(0)
+    best_prior_idx.squeeze_(1)
+    best_prior_overlap.squeeze_(1)
+    best_truth_overlap.index_fill_(0, best_prior_idx, 2)  # ensure best prior
+    # TODO refactor: index  best_prior_idx with long tensor
+    # ensure every gt matches with its prior of max overlap
+    for j in range(best_prior_idx.size(0)):
+        best_truth_idx[best_prior_idx[j]] = j
+    matches = truths[best_truth_idx]          # Shape: [num_priors,4]
+    conf = labels[best_truth_idx]             # Shape: [num_priors]
+    conf[best_truth_overlap < threshold] = 0  # label as background
+    loc_t[idx] = matches    # [num_priors,4] encoded offsets to learn
+    conf_t[idx] = conf  # [num_priors] top class label for each prior
 
 def matrix_iou(a,b):
     """

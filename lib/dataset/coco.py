@@ -44,9 +44,11 @@ class COCODetection(data.Dataset):
         self.ids = list()
         self.annotations = list()
         self._view_map = {
-            'minival2014' : 'val2014',          # 5k val2014 subset
-            'valminusminival2014' : 'val2014',  # val2014 \setminus minival2014
-            'test-dev2015' : 'test2015',
+            'trainval4582': 'train4582',          # 5k val2014 subset
+            'test4582': 'test4582',
+            # 'minival2014' : 'val2014',          # 5k val2014 subset
+            # 'valminusminival2014' : 'val2014',  # val2014 \setminus minival2014
+            # 'test-dev2015' : 'test2015',
         }
 
         # self.data_name = list()
@@ -97,8 +99,10 @@ class COCODetection(data.Dataset):
 
 
     def _get_ann_file(self, name):
-        prefix = 'instances' if name.find('test') == -1 \
-                else 'image_info'
+        # prefix = 'instances' if name.find('test') == -1 \
+        # prefix = 'parking_keypoints' if name.find('test') == -1 \
+        #         else 'image_info'
+        prefix = 'parking_keypoints'
         return os.path.join(self.root, 'annotations',
                         prefix + '_' + name + '.json')
 
@@ -126,7 +130,8 @@ class COCODetection(data.Dataset):
                 img_path = pickle.load(fid)
             print('{} img path loaded from {}'.format(coco_name,cache_file))
             return img_path
-
+        if not os.path.exists(self.cache_path):
+            os.mkdir(self.cache_path)
         print('parsing img path for {}'.format(coco_name))
         img_path = [self.image_path_from_index(coco_name, index)
                     for index in indexes]
@@ -285,6 +290,7 @@ class COCODetection(data.Dataset):
 
         print('~~~~ Summary metrics ~~~~')
         coco_eval.summarize()
+        return ap
 
     def _do_detection_eval(self, res_file, output_dir):
         ann_type = 'bbox'
@@ -293,11 +299,12 @@ class COCODetection(data.Dataset):
         coco_eval.params.useSegm = (ann_type == 'segm')
         coco_eval.evaluate()
         coco_eval.accumulate()
-        self._print_detection_eval_metrics(coco_eval)
+        ap = self._print_detection_eval_metrics(coco_eval)
         eval_file = os.path.join(output_dir, 'detection_results.pkl')
         with open(eval_file, 'wb') as fid:
             pickle.dump(coco_eval, fid, pickle.HIGHEST_PROTOCOL)
         print('Wrote COCO eval results to: {}'.format(eval_file))
+        return ap
 
     def _coco_results_one_category(self, boxes, cat_id):
         results = []
@@ -351,6 +358,8 @@ class COCODetection(data.Dataset):
         res_file += '.json'
         self._write_coco_results_file(all_boxes, res_file)
         # Only do evaluation on non-test sets
-        if self.coco_name.find('test') == -1:
-            self._do_detection_eval(res_file, output_dir)
+        # if self.coco_name.find('test') == -1:
+        if self.coco_name.find('test') == 0:
+            ap = self._do_detection_eval(res_file, output_dir)
+            return [ap], ap   # TODO return ap map for cls > 1
         # Optionally cleanup results json file
