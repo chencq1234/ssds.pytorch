@@ -18,10 +18,10 @@ import shutil
 # from argparse import RawTextHelpFormatter
 import sys
 
-from lib.BoundingBox import BoundingBox
-from lib.BoundingBoxes import BoundingBoxes
-from lib.Evaluator import *
-from lib.utils import BBFormat
+from lib.calpr.prlib.BoundingBox import BoundingBox
+from lib.calpr.prlib.BoundingBoxes import BoundingBoxes
+from lib.calpr.prlib.Evaluator import *
+from lib.calpr.prlib.utils import BBFormat
 import shelve
 
 def add_path(path):
@@ -123,13 +123,7 @@ def getBoundingBoxes(directory,
     os.chdir(directory)
     files = glob.glob("*.txt")
     files.sort()
-    # Read GT pr_detections from txt file
-    # Each line of the files in the pr_groundtruths folder represents a ground truth bounding box
-    # (bounding boxes that a detector should detect)
-    # Each value of each line is  "class_id, x, y, width, height" respectively
-    # Class_id represents the class of the bounding box
-    # x, y represents the most top-left coordinates of the bounding box
-    # x2, y2 represents the most bottom-right coordinates of the bounding box
+
     for f in files:
         nameOfImage = f.replace(".txt", "")
         fh1 = open(f, "r")
@@ -184,10 +178,7 @@ def getBoundingBoxes(directory,
     return allBoundingBoxes, allClasses
 
 def process_pr_curve(args):
-# iouThreshold default=0.5
     iouThreshold = args.iouThreshold
-
-    # Arguments validation
     errors = []
     # Validate formats
     # XYWH = 1  XYX2Y2 = 2 default is 1: xywh
@@ -246,17 +237,6 @@ def process_pr_curve(args):
     os.makedirs(savePath)
     # Show plot during execution执行中显示结果
     showPlot = args.showPlot
-
-    # print('iouThreshold= %f' % iouThreshold)
-    # print('savePath = %s' % savePath)
-    # print('gtFormat = %s' % gtFormat)
-    # print('detFormat = %s' % detFormat)
-    # print('gtFolder = %s' % gtFolder)
-    # print('detFolder = %s' % detFolder)
-    # print('gtCoordType = %s' % gtCoordType)
-    # print('detCoordType = %s' % detCoordType)
-    # print('showPlot %s' % showPlot)
-
     # Get groundtruth boxes
     allBoundingBoxes, allClasses = getBoundingBoxes(
         gtFolder, True, gtFormat, gtCoordType, imgSize=imgSize)
@@ -284,223 +264,41 @@ def process_pr_curve(args):
         savePath=savePath,
         showGraphic=showPlot)
 
-    f = open(os.path.join(savePath, 'results.txt'), 'w')
+    # f = open(os.path.join(savePath, 'results.txt'), 'w')
     # f.write('Object Detection Metrics\n')
     # f.write('https://github.com/rafaelpadilla/Object-Detection-Metrics\n\n\n')
-    f.write('Average Precision (AP), Precision and Recall per class:')
+    # f.write('Average Precision (AP), Precision and Recall per class:')
 
     # each detection is a class
     res_dict = {}
     for metricsPerClass in detections:
-
-        # Get metric values per each class
         cl = metricsPerClass['class']
-        res_dict[cl] = {}
         ap = metricsPerClass['AP']
-        precision = metricsPerClass['precision']
-        recall = metricsPerClass['recall']
-        totalPositives = metricsPerClass['total positives']
-        total_TP = metricsPerClass['total TP']
-        total_FP = metricsPerClass['total FP']
+        res_dict[cl] = ap
+    return res_dict
 
-        if totalPositives > 0:
-            validClasses = validClasses + 1
-            acc_AP = acc_AP + ap
-            prec = [p for p in precision]
-            rec = [r for r in recall]
-            # prec = ['%.2f' % p for p in precision]
-            # rec = ['%.2f' % r for r in recall]
-            ap_str = "{0:.2f}%".format(ap * 100)
-            # ap_str = "{0:.4f}%".format(ap * 100)
-            print('AP: %s (%s)' % (ap_str, cl))
-            f.write('\n\nClass: %s' % cl)
-            f.write('\nAP: %s' % ap_str)
-            f.write('\nPrecision: %s' % prec)
-            f.write('\nRecall: %s' % rec)
-            res_dict[cl]['ap'] = ap_str
-            res_dict[cl]['p'] = prec
-            res_dict[cl]['r'] = rec
-
-    mAP = acc_AP / validClasses
-    mAP_str = "{0:.2f}%".format(mAP * 100)
-    print('mAP: %s' % mAP_str)
-    f.write('\n\n\nmAP: %s' % mAP_str)
-    f.close()
-    res_dict['map'] = mAP_str
-    if args.save_pr_shelve:
-        # if not os.path.exists(args.save_pr_shelve):
-        #     os.mkdir(args.save_pr_shelve)
-        w = shelve.open(args.save_pr_shelve)
-        # with shelve.open(os.path.abspath(args.save_pr_shelve)) as f:
-        w['res'] = res_dict
-        w.close()
-
-
+class PRargs:
+    def __init__(self,
+            detFolder="/data-private/nas/pspace/tiPytorchFile/yolov3_mbv1-100-20190719_0002/100",
+            gtFolder="/data-private/nas/pspace/4582data0522/VOCdevkitParking4582ex2-30crop256-300-556/cal_pr_gt/"):
+        self.gtFolder = gtFolder
+        self.detFolder = detFolder
+        self.method = MethodAveragePrecision.EveryPointInterpolation
+        self.iouThreshold=0.5
+        self.gtFormat = 'xyrb'
+        self.detFormat = 'xyrb'
+        self.gtCoordinates = 'abs'
+        self.detCoordinates = 'abs'
+        self.imgSize = ''
+        self.savePath = None
+        self.showPlot = False
+        self.save_pr_shelve = ''
 if __name__ == "__main__":
-    # Get current path to set default folders
-    # currentPath = os.path.dirname(os.path.abspath(__file__))
 
-    VERSION = '0.1 (beta)'
-
-    parser = argparse.ArgumentParser(
-        prog='Object Detection Metrics - Pascal VOC',
-        description='This project applies the most popular metrics used to evaluate object detection '
-                    'algorithms.\nThe current implemention runs the Pascal VOC metrics.\nFor further references, '
-                    'please check:\nhttps://github.com/rafaelpadilla/Object-Detection-Metrics',
-        epilog="Developed by: Rafael Padilla (rafael.padilla@smt.ufrj.br)")
-    # formatter_class=RawTextHelpFormatter)
-    parser.add_argument('-v', '--version', action='version', version='%(prog)s ' + VERSION)
-    # Positional arguments
-    # Mandatory
-    parser.add_argument(
-        '-gt',
-        '--gtfolder',
-        dest='gtFolder',
-        # default="/data-private/nas/pspace/4582data0522/VOCdevkitParking4582st20ex2-15crop192-364-556/cal_pr_gt/",  # groundtruths文件夹位置，默认为pr_groundtruths
-        default="/data-private/nas/pspace/4582data0522/VOCdevkitParking4582ex2-30crop256-300-556/cal_pr_gt/",  # groundtruths文件夹位置，默认为pr_groundtruths
-        # default="/data-private/nas/pspace/4582data0522/VOCdevkitParking4582ex2-20sted-crop256/cal_pr_gt/",  # groundtruths文件夹位置，默认为pr_groundtruths
-        # default="/data-private/nas/pspace/4582data0522/VOCdevkitParking4582ex2-15crop192-364-556/cal_pr_gt/",  # groundtruths文件夹位置，默认为pr_groundtruths
-        metavar='',
-        help='folder containing your ground truth bounding boxes')
-    parser.add_argument(
-        '-det',
-        '--detfolder',
-        dest='detFolder',
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190605_00-13/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190605_00-21/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/0605_00-21_del_channel_0611/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.25/voc0712-512x512_mobiledetnet-0.25_20190612_00-01/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-256x256/mobiledetnet-0.25/voc0712-256x256_mobiledetnet-0.25_20190612_15-11/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-256x256/mobiledetnet-0.25/voc0712-256x256_mobiledetnet-0.25_20190612_15-46/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-256x256/mobiledetnet-0.25/voc0712-256x256_mobiledetnet-0.25_20190612_16-08/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnetv2-0.25/voc0712-512x512_mobiledetnetv2-0.25_20190613_20-36/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnetv2-0.25/voc0712-512x512_mobiledetnetv2-0.25_20190613_20-23/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190605_00-28/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712/JDetNet/20190605_00-41_ds_PSP_dsFac_32_hdDS8_1/initial/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190606_00-48/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-1280x256/mobiledetnet-0.5/voc0712-1280x256_mobiledetnet-0.5_20190610_17-13/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.25/voc0712-512x512_mobiledetnet-0.25_20190613_17-50/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnetv2-1.0/voc0712-512x512_mobiledetnetv2-1.0_20190613_18-20/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnetv2-0.5/voc0712-512x512_mobiledetnetv2-0.5_20190614_17-10/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnetv2-1.0/voc0712-512x512_mobiledetnetv2-1.0_20190615_00-38/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnetv2-0.5/voc0712-512x512_mobiledetnetv2-0.5_20190615_14-12/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnetv2-0.25/voc0712-512x512_mobiledetnetv2-0.25_20190615_14-15/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnetv2-0.25/voc0712-512x512_mobiledetnetv2-0.25_20190615_14-30/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnetv2-0.25/voc0712-512x512_mobiledetnetv2-0.25_20190615_14-41/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190617_16-34/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190617_20-06/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190617_20-22/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190618_10-56/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190605_00-21/initial/90000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/0605_00-21_del_channel_0611/initial/68000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190618_11-09/initial/48000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190618_23-25/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.25/voc0712-512x512_mobiledetnet-0.25_20190618_23-44/initial/150000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190618_15-02/initial/18000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190620_17-33/initial/32000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190620_18-37/initial/48000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190621_12-00/initial/52000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190624_16-39/initial/102000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190624_23-20/initial/74000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190625_17-37/initial/78000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190625_17-37/initial/70000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/data-private/nas/pspace/tiPytorchFile/mobilenetv1_voc-lite-0.5-07032330/1000",  #ap: 0.7018 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190703_11-06/initial/78000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190709_17-03/initial/58000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190709_15-49/initial/62000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190710_15-34/initial/90000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190710_15-34/initial/102000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190710_15-34/initial/150000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190618_10-56/initial/120000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190710_15-21/initial/70000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190618_15-02/initial/88000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/data-private/nas/pspace/tiPytorchFile/mobilenetv1_voc-lite-0.5-07032330/1000",  #ap: 0.7018  预测结果label文件夹位置，默认为pr_detections
-        default="/data-private/nas/pspace/tiPytorchFile/yolov3_mbv1-100-20190719_0002/100",  #ap: 0.8649 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190717_15-08/initial/84000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190717_15-09/initial/72000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190717_21-53/initial/62000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190717_22-09/initial/74000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190717_22-12/initial/90000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190717_22-51/initial/78000",  # 预测结果label文件夹位置，默认为pr_detections
-        # default="/home/chencq/caffe-jacinto-models/scripts/training/voc0712-512x512/mobiledetnet-0.5/voc0712-512x512_mobiledetnet-0.5_20190717_22-54/initial/84000",  # 预测结果label文件夹位置，默认为pr_detections
-        metavar='',
-        help='folder containing your detected bounding boxes')
-    parser.add_argument(
-        '-method',
-        '--M',
-        dest='method',
-        default=MethodAveragePrecision.EveryPointInterpolation,
-        # default=MethodAveragePrecision.ElevenPointInterpolation,  # 预测结果label文件夹位置，默认为pr_detections
-        # default=os.path.join(currentPath, 'prediction_label'),
-        metavar='',
-        help='Interpolation method')
-
-    # Optional
-    parser.add_argument(
-        '-t',
-        '--threshold',
-        dest='iouThreshold',
-        type=float,
-        default=0.5,  # iouThreshold iou阈值，默认为0.5
-        metavar='',
-        help='IOU threshold. Default 0.5')
-    parser.add_argument(
-        '-gtformat',
-        dest='gtFormat',
-        metavar='',
-        default='xyrb',  # 标签format， 默认为xyrb
-        help='format of the coordinates of the ground truth bounding boxes: '
-             '(\'xywh\': <left> <top> <width> <height>)'
-             ' or (\'xyrb\': <left> <top> <right> <bottom>)')
-    parser.add_argument(
-        '-detformat',
-        dest='detFormat',
-        metavar='',
-        default='xyrb',  # 预测结果format， 默认为xyrb
-        help='format of the coordinates of the detected bounding boxes '
-             '(\'xywh\': <left> <top> <width> <height>) '
-             'or (\'xyrb\': <left> <top> <right> <bottom>)')
-    parser.add_argument(
-        '-gtcoords',
-        dest='gtCoordinates',
-        default='abs',  # 标签坐标属性， 默认为绝对坐标abs
-        metavar='',
-        help='reference of the ground truth bounding box coordinates: absolute '
-             'values (\'abs\') or relative to its image size (\'rel\')')
-    parser.add_argument(
-        '-detcoords',
-        default='abs',  # 预测结果属性， 默认为绝对坐标abs
-        dest='detCoordinates',
-        metavar='',
-        help='reference of the ground truth bounding box coordinates: '
-             'absolute values (\'abs\') or relative to its image size (\'rel\')')
-    parser.add_argument(
-        '-imgsize',  # 图像尺寸， 当坐标为相对坐标时需要
-        dest='imgSize',
-        metavar='',
-        help='image size. Required if -gtcoords or -detcoords are \'rel\'')
-    parser.add_argument(
-        '-sp', '--savepath',
-        dest='savePath',
-        default=None,  # plot保存位置文件夹，默认为results文件夹
-        metavar='',
-        help='folder where the plots are saved')
-    parser.add_argument(
-        '-np',
-        '--noplot',
-        dest='showPlot',
-        default=False,  # 是否显示plot, 默认为False
-        action='store_false',
-        help='no plot is shown during execution')
-    parser.add_argument(
-        '--save_pr_shelve',
-        dest='save_pr_shelve',
-        default='',  # 保存 precision recall 为shelve 的路径，若为空，则不保存
-        action='store_false',
-        help='save precision recall as shelve')
-    args = parser.parse_args()
-    print(args.detFolder)
-    print(args.gtFolder)
+    input = PRargs()
+    print(input.detFolder)
+    print(input.gtFolder)
     # os.system("python3 -V")
-    process_pr_curve(args)
+    res_dict = process_pr_curve(input)
+    print(res_dict)
 

@@ -14,7 +14,7 @@ import random
 import math
 from lib.utils.box_utils import matrix_iou
 from torchvision import transforms as tfs
-
+import os
 def _crop(image, boxes, labels):
     height, width, _ = image.shape
 
@@ -24,7 +24,7 @@ def _crop(image, boxes, labels):
     while True:
         mode = random.choice((
             None,
-            # (0.1, None),
+            (0.1, None),
             (0.3, None),
             (0.5, None),
             (0.7, None),
@@ -42,13 +42,14 @@ def _crop(image, boxes, labels):
             max_iou = float('inf')
 
         for _ in range(50):
-            scale = random.uniform(0.3,1.)
-            min_ratio = max(0.5, scale*scale)
-            max_ratio = min(2, 1. / scale / scale)
+            scale = random.uniform(0.6, 1.)
+            min_ratio = max(0.6, scale*scale)
+            max_ratio = min(1.2, 1. / scale / scale)
+            # min_ratio = max(0.5, scale*scale)
+            # max_ratio = min(2, 1. / scale / scale)
             ratio = math.sqrt(random.uniform(min_ratio, max_ratio))
             w = int(scale * ratio * width)
             h = int((scale / ratio) * height)
-
 
             l = random.randrange(width - w)
             t = random.randrange(height - h)
@@ -76,8 +77,24 @@ def _crop(image, boxes, labels):
 
             return image_t, boxes_t,labels_t
 
+class RandomContrast(object):
+    def __init__(self, lower=0.5, upper=1.5):
+        self.lower = lower
+        self.upper = upper
+        assert self.upper >= self.lower, "contrast upper must be >= lower."
+        assert self.lower >= 0, "contrast lower must be non-negative."
 
-def _distort(image):
+    # expects float image
+    def __call__(self, image, boxes=None, labels=None):
+        if random.randrange(2):
+            alpha = random.uniform(self.lower, self.upper)
+            image = np.array(image, dtype=np.float)
+            image *= alpha
+            image = np.array(image, dtype=np.uint8)
+        return image
+
+
+def _distort(image, test_mode=0):
     def _convert(image, alpha=1, beta=0):
         tmp = image.astype(float) * alpha + beta
         tmp[tmp < 0] = 0
@@ -86,9 +103,11 @@ def _distort(image):
 
     image = image.copy()
 
+    # if random.randrange(2) or test_mode:
     if random.randrange(2):
         _convert(image, beta=random.uniform(-32, 32))
 
+    # if random.randrange(2) or test_mode:
     if random.randrange(2):
         _convert(image, alpha=random.uniform(0.5, 1.5))
 
@@ -116,7 +135,7 @@ def _expand(image, boxes, fill, p):
         scale = random.uniform(1,4)
 
         min_ratio = max(0.5, 1./scale/scale)
-        max_ratio = min(2, scale*scale)
+        max_ratio = min(4, scale*scale)
         ratio = math.sqrt(random.uniform(min_ratio, max_ratio))
         ws = scale*ratio
         hs = scale/ratio
@@ -143,8 +162,9 @@ def _expand(image, boxes, fill, p):
         return image, boxes_t
 
 
-def _mirror(image, boxes):
+def _mirror(image, boxes, test_mode=0):
     _, width, _ = image.shape
+    # if random.randrange(2) or test_mode:
     if random.randrange(2):
         image = image[:, ::-1]
         boxes = boxes.copy()
@@ -152,7 +172,7 @@ def _mirror(image, boxes):
     return image, boxes
 
 
-def _elastic(image, p, alpha=None, sigma=None, random_state=None):
+def _elastic(image, p, alpha=None, sigma=None, random_state=None, test_mode=0):
     """Elastic deformation of images as described in [Simard2003]_ (with modifications).
     .. [Simard2003] Simard, Steinkraus and Platt, "Best Practices for
          Convolutional Neural Networks applied to Visual Document Analysis", in
@@ -162,12 +182,13 @@ def _elastic(image, p, alpha=None, sigma=None, random_state=None):
      From: 
      https://www.kaggle.com/bguberfain/elastic-transform-for-data-augmentation
     """
+    # if random.random() > p and not test_mode:
     if random.random() > p:
         return image
     if alpha == None:
-        alpha = image.shape[0] * random.uniform(0.5,2)
+        alpha = image.shape[0] * random.uniform(0.5, 2)
     if sigma == None:
-        sigma = int(image.shape[0] * random.uniform(0.5,1))
+        sigma = int(image.shape[0] * random.uniform(0.5, 1))
     if random_state is None:
         random_state = np.random.RandomState(None)
 
@@ -196,7 +217,7 @@ def draw_bbox(image, bbxs, color=(0, 255, 0)):
     return img
 
 
-def swap_channels(image):
+def swap_channels(image, test_mode=0):
     """
     Args:
         image (Tensor): image tensor to be transformed
@@ -206,13 +227,15 @@ def swap_channels(image):
     perms = ((0, 1, 2), (0, 2, 1),
              (1, 0, 2), (1, 2, 0),
              (2, 0, 1), (2, 1, 0))
-    swap = perms[random.randrange(len(perms))]
-    image = image[:, :, swap]
+    # if random.randrange(2) or test_mode:
+    if random.randrange(2):
+        swap = perms[random.randrange(len(perms))]
+        image = image[:, :, swap]
     return image
 
 
 class RandomBrightness(object):
-    def __init__(self, delta=3):
+    def __init__(self, delta=32):
         assert delta >= 0.0
         assert delta <= 255.0
         self.delta = delta
@@ -223,11 +246,26 @@ class RandomBrightness(object):
             image = image.astype(np.float32)
             image += delta
             image.astype(np.uint8)
-        return image, boxes, labels
+        return image
+
+
+class RandomSaturation(object):
+    def __init__(self, lower=0.5, upper=1.5):
+        self.lower = lower
+        self.upper = upper
+        assert self.upper >= self.lower, "contrast upper must be >= lower."
+        assert self.lower >= 0, "contrast lower must be non-negative."
+
+    def __call__(self, image, boxes=None, labels=None):
+        if random.randrange(2):
+            image = np.array(image, dtype=np.float)
+            image[:, :, 1] *= random.uniform(self.lower, self.upper)
+            image = np.array(image, dtype=np.uint8)
+        return image
 
 
 class RandomHue(object):
-    def __init__(self, delta=10.0):
+    def __init__(self, delta=18.0):
         assert delta >= 0.0 and delta <= 360.0
         self.delta = delta
 
@@ -238,7 +276,7 @@ class RandomHue(object):
             image[:, :, 0][image[:, :, 0] > 360.0] -= 360.0
             image[:, :, 0][image[:, :, 0] < 0.0] += 360.0
             image.astype(np.uint8)
-        return image, boxes, labels
+        return image
 
 
 class preproc(object):
@@ -253,16 +291,18 @@ class preproc(object):
     def __call__(self, image, targets=None):
         # some bugs 
         if self.p == -2: # abs_test
-            targets = np.zeros((1,5))
+            targets = np.zeros((1, 5))
             targets[0] = image.shape[0]
             targets[0] = image.shape[1]
             image = preproc_for_test(image, self.resize, self.means)
             return torch.from_numpy(image), targets
-
+        height, width, _ = image.shape
+        targets[:, [0, 2]] *= width
+        targets[:, [1, 3]] *= height
         boxes = targets[:,:-1].copy()
         labels = targets[:,-1].copy()
         if len(boxes) == 0:
-            targets = np.zeros((1,5))
+            targets = np.zeros((1, 5))
             image = preproc_for_test(image, self.resize, self.means) # some ground truth in coco do not have bounding box! weird!
             return torch.from_numpy(image), targets
         if self.p == -1:  # eval
@@ -286,42 +326,105 @@ class preproc(object):
 
         if self.writer is not None:
             image_show = draw_bbox(image, boxes)
-            self.writer.add_image('preprocess/input_image', image_show, self.epoch)
+            cv2.imwrite(os.path.join(self.writer, "img_raw"+str(random.randrange(1000))+'.jpg'), image_show)
+            # cv2.imshow('crop_image', image_show)
+            # cv2.waitKey(0)
+            # self.writer.add_image('preprocess/input_image', image_show, self.epoch)
 
         image_t, boxes, labels = _crop(image, boxes, labels)
         if self.writer is not None:
             image_show = draw_bbox(image_t, boxes)
-            self.writer.add_image('preprocess/crop_image', image_show, self.epoch)
+            cv2.imwrite(os.path.join(self.writer, "crop_image" + str(random.randrange(1000)) + '.jpg'), image_show)
+            # cv2.imshow('crop_image', image_show)
+            # cv2.waitKey(0)
+            # self.writer.add_image('preprocess/crop_image', image_show, self.epoch)
 
         image_t = _distort(image_t)
         if self.writer is not None:
             image_show = draw_bbox(image_t, boxes)
-            self.writer.add_image('preprocess/distort_image', image_show, self.epoch)
+            cv2.imwrite(os.path.join(self.writer, "distort" + str(random.randrange(1000)) + '.jpg'), image_show)
+            # cv2.imshow('distort', image_show)
+            # cv2.waitKey(0)
+            # self.writer.add_image('preprocess/distort_image', image_show, self.epoch)
         
         image_t = _elastic(image_t, self.p)
         if self.writer is not None:
             image_show = draw_bbox(image_t, boxes)
-            self.writer.add_image('preprocess/elastic_image', image_show, self.epoch)
+            name = 'elastic'
+            cv2.imwrite(os.path.join(self.writer, name + str(random.randrange(1000)) + '.jpg'), image_show)
+            # cv2.imshow('elastic', image_show)
+            # cv2.waitKey(0)
+            # self.writer.add_image('preprocess/elastic_image', image_show, self.epoch)
 
         image_t, boxes = _expand(image_t, boxes, self.means, self.p)
         if self.writer is not None:
             image_show = draw_bbox(image_t, boxes)
-            self.writer.add_image('preprocess/expand_image', image_show, self.epoch)
+            name = 'expand'
+            cv2.imwrite(os.path.join(self.writer, name + str(random.randrange(1000)) + '.jpg'), image_show)
+            # cv2.imshow('expand', image_show)
+            # cv2.waitKey(0)
+            # self.writer.add_image('preprocess/expand_image', image_show, self.epoch)
 
         image_t, boxes = _mirror(image_t, boxes)
         if self.writer is not None:
             image_show = draw_bbox(image_t, boxes)
-            self.writer.add_image('preprocess/mirror_image', image_show, self.epoch)
+            name = 'mirror'
+            cv2.imwrite(os.path.join(self.writer, name + str(random.randrange(1000)) + '.jpg'), image_show)
+
+            # cv2.imshow('_mirror', image_show)
+            # cv2.waitKey(0)
+            # self.writer.add_image('preprocess/mirror_image', image_show, self.epoch)
         # image_t, boxes, labels = RandomBrightness()(image_t, boxes, labels)
         image_t = swap_channels(image_t)
-        # image_t, boxes, labels = RandomHue()(image_t, boxes, labels)
-        # only write the preprocess step for the first image
         if self.writer is not None:
-            # print('image adding')
-            self.release_writer()
+            image_show = draw_bbox(image_t, boxes)
+            name = 'swap_channels'
+            cv2.imwrite(os.path.join(self.writer, name + str(random.randrange(1000)) + '.jpg'), image_show)
 
+            # cv2.imshow('swap_channels', image_show)
+            # cv2.waitKey(0)
+        image_t = RandomHue()(image_t, boxes, labels)
+        if self.writer is not None:
+            image_show = draw_bbox(image_t, boxes)
+            name = 'RandomHue'
+            cv2.imwrite(os.path.join(self.writer, name + str(random.randrange(1000)) + '.jpg'), image_show)
+
+            # cv2.imshow('RandomHue', image_show)
+            # cv2.waitKey(0)
+        image_t = RandomSaturation()(image_t)
+        if self.writer is not None:
+            image_show = draw_bbox(image_t, boxes)
+            name = 'RandomSaturation'
+            cv2.imwrite(os.path.join(self.writer, name + str(random.randrange(1000)) + '.jpg'), image_show)
+
+            # cv2.imshow('RandomSaturation', image_show)
+            # cv2.waitKey(0)
+        # only write the preprocess step for the first image
+        image_t = RandomBrightness()(image_t)
+        if self.writer is not None:
+            image_show = draw_bbox(image_t, boxes)
+            name = 'RandomBrightness'
+            cv2.imwrite(os.path.join(self.writer, name + str(random.randrange(1000)) + '.jpg'), image_show)
+
+            # cv2.imshow('RandomBrightness', image_show)
+            # cv2.waitKey(0)
+        image_t = RandomContrast()(image_t)
+        if self.writer is not None:
+            image_show = draw_bbox(image_t, boxes)
+            name = 'RandomContrast'
+            cv2.imwrite(os.path.join(self.writer, name + str(random.randrange(1000)) + '.jpg'), image_show)
+
+            # cv2.imshow('RandomContrast', image_show)
+            # cv2.waitKey(0)
         height, width, _ = image_t.shape
         image_t = preproc_for_test(image_t, self.resize, self.means)
+        if self.writer is not None:
+            image_show = draw_bbox(image_t, boxes)
+            name = 'preproc_for_test'
+            cv2.imwrite(os.path.join(self.writer, name + str(random.randrange(1000)) + '.jpg'), image_show)
+
+            # cv2.imshow('preproc_for_test', image_show)
+            # cv2.waitKey(0)
         boxes = boxes.copy()
         boxes[:, 0::2] /= width
         boxes[:, 1::2] /= height

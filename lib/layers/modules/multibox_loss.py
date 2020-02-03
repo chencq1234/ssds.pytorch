@@ -21,7 +21,7 @@ class FocalLoss(nn.Module):
                                 instead summed for each minibatch.
     """
 
-    def __init__(self, class_num, alpha=None, gamma=2, size_average=True):
+    def __init__(self, class_num, alpha=None, gamma=2, size_average=False):
         super(FocalLoss, self).__init__()
         if alpha is None:
             self.alpha = torch.ones(class_num, 1)
@@ -33,7 +33,7 @@ class FocalLoss(nn.Module):
         self.gamma = gamma
         self.class_num = class_num
         self.size_average = size_average
-        print(self.gamma)
+        # print(self.gamma)
 
     def forward(self, inputs, targets):
         N = inputs.size(0)
@@ -124,11 +124,11 @@ class MultiBoxLoss(nn.Module):
             g: ground truth boxes
             N: number of matched default boxes
         See: https://arxiv.org/pdf/1512.02325.pdf for more details.
-    loss_cls : [focalloss cross_entropy]
+    loss_cls : [focalloss, cross_entropy]
     loss_loc : [Giou, SmoothL1]
     """
 
-    def __init__(self, cfg, priors, use_gpu=True, loss_l='Giou', loss_c='focalloss'):
+    def __init__(self, cfg, priors, use_gpu=True, loss_l='Giou', loss_c='cross_entropy'):
         super(MultiBoxLoss, self).__init__()
         self.use_gpu = use_gpu
         self.num_classes = cfg.NUM_CLASSES
@@ -187,7 +187,7 @@ class MultiBoxLoss(nn.Module):
 
         # Localization Loss (Smooth L1)
         # Shape: [batch,num_priors,4]
-        pos_idx = pos.unsqueeze(pos.dim()).expand_as(loc_data)
+        pos_idx = pos.unsqueeze(pos.dim()).expand_as(loc_data)  # 将 pos扩充一维，扩充到loc_data的维度，其值为pos对应值的copy
         loc_p = loc_data[pos_idx].view(-1,4)
         loc_t = loc_t[pos_idx].view(-1,4)
         # loss_l = F.smooth_l1_loss(loc_p, loc_t, size_average=False)
@@ -200,11 +200,11 @@ class MultiBoxLoss(nn.Module):
 
         # Compute max conf across batch for hard negative mining
         batch_conf = conf_data.view(-1, self.num_classes)
-        loss_c = log_sum_exp(batch_conf) - batch_conf.gather(1, conf_t.view(-1,1))
+        loss_c = log_sum_exp(batch_conf) - batch_conf.gather(1, conf_t.view(-1,1))  # softmax后conf - gt对应conf算出loss
 
         # Hard Negative Mining
-        loss_c = loss_c.view(num, -1)
-        loss_c[pos] = 0 # filter out pos boxes for now
+        loss_c = loss_c.view(num, -1)  # 每一张图片，每个default box的loss
+        loss_c[pos] = 0  # filter out pos boxes for now
 
         _,loss_idx = loss_c.sort(1, descending=True)
         _,idx_rank = loss_idx.sort(1)
@@ -221,6 +221,8 @@ class MultiBoxLoss(nn.Module):
             targets_weighted = conf_t[(pos+neg).gt(0)]
             loss_c = F.cross_entropy(conf_p, targets_weighted, size_average=False)
         elif self.loss_cls == "focalloss":
+            # targets_weighted = conf_t[(pos + neg).gt(0)]
+            # loss_c = self.focalloss(conf_p, targets_weighted)
             batch_conf = conf_data.view(-1, self.num_classes)
             loss_c = self.focalloss(batch_conf, conf_t)
         N = num_pos.data.sum().double()
@@ -229,3 +231,4 @@ class MultiBoxLoss(nn.Module):
         loss_l /= N
         loss_c /= N
         return loss_l, loss_c
+        # return 2*loss_l, 4*loss_c

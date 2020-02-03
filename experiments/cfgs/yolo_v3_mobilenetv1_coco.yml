@@ -24,7 +24,7 @@ TRAIN:
   RESUME_SCOPE: 'base,extras,loc,conf'
   OPTIMIZER:
     OPTIMIZER: sgd
-    LEARNING_RATE: 0.004
+    LEARNING_RATE: 0.001
     MOMENTUM: 0.9
     WEIGHT_DECAY: 0.0001
   LR_SCHEDULER:
@@ -57,8 +57,9 @@ DATASET:
 #  TEST_SETS:  [['2017', 'val']]
   PROB: 0.6
 
-EXP_DIR: '/data-private/nas/pspace/tiPytorchFile/yolov3_mobilenetv1_coco-lite-0.5'
-LOG_DIR: '/data-private/nas/pspace/tiPytorchFile/yolov3_mobilenetv1_coco-lite-0.5'
+EXP_DIR: '/data-private/nas/pspace/tiPytorchFile/yolov3_mobilenetv1_coco'
+LOG_DIR: '/data-private/nas/pspace/tiPytorchFile/yolov3_mobilenetv1_coco'
+#LOG_DIR: '/data-private/nas/pspace/tiPytorchFile/yolov3_mobilenetv1_coco-lite-0.5'
 #RESUME_CHECKPOINT: '/data-private/nas/pspace/tiPytorchFile/mobilenet_v2_yolo_v3_voc_75.8.pth'
 #RESUME_CHECKPOINT: '/data-private/nas/pspace/tiPytorchFile/mobilenetv1_voc-lite-0.5-07032330/yolo_v3_mobilenet_v1_lite_050_voc_epoch_1000.pth'
 RESUME_CHECKPOINT: ''

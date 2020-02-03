@@ -52,8 +52,8 @@ class PriorBox(object):
 
                             # aspect_ratio: 1 Max size
                             # rel size: sqrt(s_k * s_(k+1))
-                            s_k_prime = sqrt(s_k * self.scales[k+1])
-                            mean += [cx, cy, s_k_prime, s_k_prime]
+                            s_k_prime = sqrt(s_k * self.scales[k+1])  # max_wh = (1*n)**0.5
+                            mean += [cx, cy, s_k_prime, s_k_prime]   # [cx, cy, max_wh, max_wh]
                         else:
                             ar_sqrt = sqrt(ar)
                             mean += [cx, cy, s_k*ar_sqrt, s_k/ar_sqrt]

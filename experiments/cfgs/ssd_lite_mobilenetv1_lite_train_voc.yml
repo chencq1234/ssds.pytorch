@@ -1,6 +1,6 @@
 MODEL:
   SSDS: ssd_lite
-  NETS: mobilenet_v1
+  NETS: mobilenet_v1_lite_050
   IMAGE_SIZE: [512, 512]
   NUM_CLASSES: 2
   FEATURE_LAYER: [[11, 13, 'S', 'S', 'S', 'S'], [512, 1024, 512, 256, 256, 128]]

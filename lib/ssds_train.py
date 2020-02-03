@@ -13,7 +13,7 @@ import torch.optim as optim
 from torch.optim import lr_scheduler
 import torch.utils.data as data
 import torch.nn.init as init
-
+from lib.calpr.pr_curve import process_pr_curve, PRargs
 from tensorboardX import SummaryWriter
 
 from lib.layers import *
@@ -33,7 +33,6 @@ import time
 # ##############################  plot path and num  #################################################################
 def creat_log(cfg, phase="train"):
     now = time.strftime('%Y%m%d_%H%M', time.localtime(time.time()))
-
     if phase == "train":
         cfg['EXP_DIR'] = "".join([cfg['EXP_DIR'], "-", now])
         cfg['LOG_DIR'] = "".join([cfg['LOG_DIR'], "-", now])
@@ -78,7 +77,8 @@ class Solver(object):
         print('===> Building model')
         logging.info('===> Building model')
         self.model, self.priorbox = create_model(cfg.MODEL)
-        self.priors = Variable(self.priorbox.forward(), volatile=True)
+        with torch.no_grad():
+            self.priors = Variable(self.priorbox.forward())
         self.detector = Detect(cfg.POST_PROCESS, self.priors)
         os.makedirs(self.cfg['EXP_DIR'], exist_ok=True)
 
@@ -107,6 +107,8 @@ class Solver(object):
         # count = 0
         # for p in self.model.parameters():
         #     count += p.data.nelement()
+        # self.multi_gpu = True
+        self.multi_gpu = False
         if self.use_gpu:
             print('Utilize GPUs for computation')
             logging.info('Utilize GPUs for computation')
@@ -115,13 +117,12 @@ class Solver(object):
             self.priors.cuda()
             cudnn.benchmark = True
             # os.environ['CUDA_VISIBLE_DEVICES'] = "4,5,6,7"  # "0,1,2,3,4,5,6,7"
-            # if torch.cuda.device_count() > 1:
-            #     self.model = torch.nn.DataParallel(self.model)
-            #     cudnn.benchmark = True
+            if torch.cuda.device_count() > 1 and self.multi_gpu:
+                self.model = torch.nn.DataParallel(self.model.cuda())
+                cudnn.benchmark = True
                 # self.model = torch.nn.DataParallel(self.model).module
 
         # Print the model architecture and parameters
-
 
         # print('Parameters and size:')
         # for name, param in self.model.named_parameters():
@@ -143,7 +144,6 @@ class Solver(object):
         self.output_dir = cfg.EXP_DIR
         self.checkpoint = cfg.RESUME_CHECKPOINT
         self.checkpoint_prefix = cfg.CHECKPOINTS_PREFIX
-
 
     def save_checkpoints(self, epochs, iters=None):
         if not os.path.exists(self.output_dir):
@@ -269,16 +269,17 @@ class Solver(object):
         return start_epoch
 
     def trainable_param(self, trainable_scope):
-        for param in self.model.parameters():
+        model = self.model.module if self.multi_gpu else self.model
+        for param in model.parameters():
             param.requires_grad = False
 
         trainable_param = []
         for module in trainable_scope.split(','):
-            if hasattr(self.model, module):
+            if hasattr(model, module):
                 # print(getattr(self.model, module))
-                for param in getattr(self.model, module).parameters():
+                for param in getattr(model, module).parameters():
                     param.requires_grad = True
-                trainable_param.extend(getattr(self.model, module).parameters())
+                trainable_param.extend(getattr(model, module).parameters())
 
         return trainable_param
 
@@ -297,6 +298,7 @@ class Solver(object):
         # warm_up epoch
         warm_up = self.cfg.TRAIN.LR_SCHEDULER.WARM_UP_EPOCHS
         aps_list, map_list = [], []
+        apvoc_list = []
         for epoch in iter(range(start_epoch+1, self.max_epochs+1)):
             #learning rate
             sys.stdout.write('\rEpoch {epoch:d}/{max_epochs:d}:\n'.format(epoch=epoch, max_epochs=self.max_epochs))
@@ -309,19 +311,35 @@ class Solver(object):
             if 'test' in cfg.PHASE:
                 # if epoch % 20 != 10:
                 #     continue
-                aps, map = self.test_epoch(self.model, self.test_loader, self.detector, self.output_dir, self.use_gpu, epoch)
-                aps_list.append(aps)
-                map_list.append(map)
-                max_idx1 = np.argmax(np.array(aps_list)[:, 0])
-                max_map_idx = np.argmax(np.array(map_list))
-                print("ap1 max: %f , epoch is: %d" % (aps_list[max_idx1][0], start_epoch+1+max_idx1))
-                print("map max: %f , epoch is: %d" % (map_list[max_map_idx], start_epoch+1+max_map_idx))
-                logging.info("ap1 max: %f , epoch is: %d" % (aps_list[max_idx1][0], start_epoch+1+max_idx1))
-                logging.info("map max: %f , epoch is: %d" % (map_list[max_map_idx], start_epoch+1+max_map_idx))
+                aps, map = self.test_epoch(self.model, self.test_loader, self.detector, self.output_dir, self.use_gpu, epoch, need_pr=True)
+                if map is not None:
+                    aps_list.append(aps)
+                    map_list.append(map)
+                    max_idx1 = np.argmax(np.array(aps_list)[:, 0])
+                    max_map_idx = np.argmax(np.array(map_list))
+                    print("ap1 max: %f , epoch is: %d" % (aps_list[max_idx1][0], start_epoch+1+max_idx1))
+                    print("map max: %f , epoch is: %d" % (map_list[max_map_idx], start_epoch+1+max_map_idx))
+                    logging.info("ap1 max: %f , epoch is: %d" % (aps_list[max_idx1][0], start_epoch+1+max_idx1))
+                    logging.info("map max: %f , epoch is: %d" % (map_list[max_map_idx], start_epoch+1+max_map_idx))
+
+                pr_path = os.path.join(self.output_dir, str(epoch))
+                pr_intput = PRargs(detFolder=pr_path)
+                res_dict = process_pr_curve(pr_intput)
+                apvoc_list.append(res_dict['pbox'])
+                print("-----------------------------------------------------------------")
+                print('cls {} ap: {}'.format('pbox', res_dict['pbox']))
+                print("-----------------------------------------------------------------")
+                logging.info("-----------------------------------------------------------------")
+                logging.info('cls {} ap: {}'.format('pbox', res_dict['pbox']))
+                logging.info("-----------------------------------------------------------------")
+                max_vocap_idx = np.argmax(apvoc_list)
+                print("ap1 voc max: %f , epoch is: %d" % (apvoc_list[max_vocap_idx], start_epoch+1+max_vocap_idx))
+                logging.info("ap1 voc max: %f , epoch is: %d" % (apvoc_list[max_vocap_idx], start_epoch+1+max_vocap_idx))
+
             if 'visualize' in cfg.PHASE:
                 self.visualize_epoch(self.model, self.visualize_loader, self.priorbox, self.writer, epoch,  self.use_gpu)
 
-            if epoch % cfg.TRAIN.CHECKPOINTS_EPOCHS == 0 or start_epoch+1+max_idx1 == epoch:
+            if epoch % cfg.TRAIN.CHECKPOINTS_EPOCHS == 0 or start_epoch+1+max_vocap_idx == epoch:
                 self.save_checkpoints(epoch)
 
     def test_model(self, need_pr=True):
@@ -363,13 +381,16 @@ class Solver(object):
             # if iteration > 8: break# print("iteration:", iteration)
             images, targets = next(batch_iterator)
             if use_gpu:
-                images = Variable(images.cuda())
-                targets = [Variable(anno.cuda(), volatile=True) for anno in targets]
+                images = images.cuda()
+                with torch.no_grad():
+                    targets = [anno.cuda() for anno in targets]
             else:
                 images = Variable(images)
                 targets = [Variable(anno, volatile=True) for anno in targets]
             _t.tic()
             # forward
+            # if (3,512,512) != (images.shape[1],images.shape[2],images.shape[3]):
+            #     print(111, )
             out = model(images, phase='train')
 
             # backprop
@@ -631,10 +652,14 @@ class Solver(object):
             logging.info("test epoch %s pr result path: %s" % (epoch, pr_path))
         for i in iter(range(num_images)):
             img = dataset.pull_image(i)
-            img_key = dataset.ids[i][-1]
+            if dataset.name == 'COCO':
+                img_key = dataset.image_indexes[i]
+            else:
+                img_key = dataset.ids[i][-1]
             scale = [img.shape[1], img.shape[0], img.shape[1], img.shape[0]]
             if use_gpu:
-                images = Variable(dataset.preproc(img)[0].unsqueeze(0).cuda(), volatile=True)
+                with torch.no_grad():
+                    images = dataset.preproc(img)[0].unsqueeze(0).cuda()
             else:
                 images = Variable(dataset.preproc(img)[0].unsqueeze(0), volatile=True)
 
@@ -678,7 +703,6 @@ class Solver(object):
             # logging.info(log)
             sys.stdout.write(log)
             sys.stdout.flush()
-
         # write result to pkl
         with open(os.path.join(output_dir, 'detections.pkl'), 'wb') as f:
             pickle.dump(all_boxes, f, pickle.HIGHEST_PROTOCOL)
@@ -686,7 +710,9 @@ class Solver(object):
         # currently the COCO dataset do not return the mean ap or ap 0.5:0.95 values
         print('Evaluating detections')
         logging.info('Evaluating detections')
+        aps, map = [], None
         aps, map = data_loader.dataset.evaluate_detections(all_boxes, output_dir)
+
         return aps, map
 
     def visualize_epoch(self, model, data_loader, priorbox, writer, epoch, use_gpu):
@@ -749,6 +775,7 @@ class Solver(object):
             scheduler = lr_scheduler.ExponentialLR(optimizer, gamma=cfg.GAMMA)
         elif cfg.SCHEDULER == 'SGDR':
             scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=cfg.MAX_EPOCHS)
+            # scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=cfg.MAX_EPOCHS//2)
         else:
             AssertionError('scheduler can not be recognized.')
         return scheduler
@@ -756,18 +783,20 @@ class Solver(object):
 
     def export_graph(self):
         self.model.train(False)
+        # if not self.multi_gpu:  # TODO bugs not support multi gpu
+        if 0:  # TODO bugs not support multi gpu
         # torch.save(self.model, os.path.join(self.cfg["EXP_DIR"], "model.pth"))
-        dummy_input = Variable(torch.randn(1, 3, cfg.MODEL.IMAGE_SIZE[0], cfg.MODEL.IMAGE_SIZE[1])).cuda()
-        # Export the model
-        save_onnx_path = os.path.join(self.cfg["EXP_DIR"], "graph.onnx")
-        torch_out = torch.onnx._export(self.model,             # model being run
-                                       dummy_input,            # model input (or a tuple for multiple inputs)
-                                       save_onnx_path,         # where to save the model (can be a file or file-like object)
-                                       export_params=True)     # store the trained parameter weights inside the model file
-        print("----------------------------------------------------------------")
-        print("save model to onnx:%s" %save_onnx_path)
-        logging.info("----------------------------------------------------------------")
-        logging.info("save model to onnx:%s" %save_onnx_path)
+            dummy_input = Variable(torch.randn(1, 3, cfg.MODEL.IMAGE_SIZE[0], cfg.MODEL.IMAGE_SIZE[1])).cuda()
+            # Export the model
+            save_onnx_path = os.path.join(self.cfg["EXP_DIR"], "graph.onnx")
+            torch_out = torch.onnx._export(self.model,             # model being run
+                                           dummy_input,            # model input (or a tuple for multiple inputs)
+                                           save_onnx_path,         # where to save the model (can be a file or file-like object)
+                                           export_params=True)     # store the trained parameter weights inside the model file
+            print("----------------------------------------------------------------")
+            print("save model to onnx:%s" %save_onnx_path)
+            logging.info("----------------------------------------------------------------")
+            logging.info("save model to onnx:%s" %save_onnx_path)
 
         # if not os.path.exists(cfg.EXP_DIR):
         #     os.makedirs(cfg.EXP_DIR)

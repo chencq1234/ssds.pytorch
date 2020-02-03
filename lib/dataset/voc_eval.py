@@ -157,13 +157,13 @@ def voc_eval(detpath,
         print(exp)
     image_ids = [image_ids[x] for x in sorted_ind]
 
-        # go down dets and mark TPs and FPs
+    # go down dets and mark TPs and FPs
     nd = len(image_ids)
     tp = np.zeros(nd)
     fp = np.zeros(nd)
     for d in range(nd):
-        R = class_recs[image_ids[d]]
-        bb = BB[d, :].astype(float)
+        R = class_recs[image_ids[d]]  # 每一个det对应gt的boxes及相关信息
+        bb = BB[d, :].astype(float)  # 单个的det box
         ovmax = -np.inf
         BBGT = R['bbox'].astype(float)
 

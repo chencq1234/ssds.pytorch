@@ -32,9 +32,10 @@ def parse_args():
             # help='optional config file', default="./experiments/cfgs/yolo_v3_mobilenetv2_voc.yml", type=str)
             # help='optional config file', default="./experiments/cfgs/yolo_v3_mobilenetv1_voc.yml", type=str)
             # help='optional config file', default="./experiments/cfgs/yolo_v3_mobilenetv1_voc-0.5.yml", type=str)
+            help='optional config file', default="./experiments/cfgs/fssd_lite_mobilenetv1_train_voc-v0.5.yml", type=str)
             # help='optional config file', default="./experiments/cfgs/ssd_lite_mobilenetv1_train_voc.yml", type=str)
             # help='optional config file', default="./experiments/cfgs/yolo_v3_mobilenetv1_voc-lite-0.5.yml", type=str)
-            help='optional config file', default="./experiments/cfgs/yolo_v3_mobilenetv1_coco.yml", type=str)
+            # help='optional config file', default="./experiments/cfgs/yolo_v3_mobilenetv1_coco.yml", type=str)
 
     # if len(sys.argv) == 1:
     #     parser.print_help()

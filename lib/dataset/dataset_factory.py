@@ -52,11 +52,15 @@ def detection_collate(batch):
     return (torch.stack(imgs, 0), targets)
 
 from lib.utils.data_augment import preproc
+from lib.utils.amdegroot_augmentations import SSDAugmentation
 import torch.utils.data as data
+
 
 def load_data(cfg, phase):
     if phase == 'train':
-        dataset = dataset_map[cfg.DATASET](cfg.DATASET_DIR, cfg.TRAIN_SETS, preproc(cfg.IMAGE_SIZE, cfg.PIXEL_MEANS, cfg.PROB))
+        dataset = dataset_map[cfg.DATASET](cfg.DATASET_DIR, cfg.TRAIN_SETS, preproc(cfg.IMAGE_SIZE,
+                                           cfg.PIXEL_MEANS, cfg.PROB), transform=SSDAugmentation(cfg.IMAGE_SIZE,
+                                                                                                 cfg.PIXEL_MEANS))
         data_loader = data.DataLoader(dataset, cfg.TRAIN_BATCH_SIZE, num_workers=cfg.NUM_WORKERS,
                                   shuffle=True, collate_fn=detection_collate, pin_memory=True)
     if phase == 'eval':

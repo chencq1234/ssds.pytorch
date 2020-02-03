@@ -4,3 +4,5 @@ tensorboardX
 torchvision
 pyyaml
 pandas
+
+opencv-python matplotlib tensorboardX torchvision pyyaml pandas

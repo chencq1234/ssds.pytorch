@@ -50,7 +50,7 @@ def bbox_overlaps_giou(bboxes1, bboxes2):
 
     ious = inter_area / union - (closure - union) / closure
     # ious = inter_area / closure - (union - inter_area) / union
-    ious = torch.clamp(ious,min=-1.0, max = 1.0)
+    ious = torch.clamp(ious, min=-1.0, max = 1.0)
     #print(ious)
     if exchange:
         ious = ious.T
@@ -158,12 +158,12 @@ def match_gious(threshold, truths, priors, variances, labels, loc_t, conf_t, idx
     # TODO refactor: index  best_prior_idx with long tensor
     # ensure every gt matches with its prior of max overlap
     for j in range(best_prior_idx.size(0)):
-        best_truth_idx[best_prior_idx[j]] = j
-    matches = truths[best_truth_idx]          # Shape: [num_priors,4]
+        best_truth_idx[best_prior_idx[j]] = j  # best_truth_idx对应的box指向gt对应的顺序
+    matches = truths[best_truth_idx]          # Shape: [num_priors,4] 匹配出的每个prior box对应的gt box
     conf = labels[best_truth_idx]             # Shape: [num_priors]
     conf[best_truth_overlap < threshold] = 0  # label as background
-    loc_t[idx] = matches    # [num_priors,4] encoded offsets to learn
-    conf_t[idx] = conf  # [num_priors] top class label for each prior
+    loc_t[idx] = matches    # [num_priors,4] encoded offsets to learn 当前batch（图片）的匹配情况
+    conf_t[idx] = conf  # [num_priors] top class label for each prior 当前batch（图片）匹配对应的置信度
 
 def matrix_iou(a,b):
     """
@@ -202,30 +202,30 @@ def match(threshold, truths, priors, variances, labels, loc_t, conf_t, idx):
     )
     # (Bipartite Matching)
     # [1,num_objects] best prior for each ground truth
-    best_prior_overlap, best_prior_idx = overlaps.max(1, keepdim=True)
+    best_prior_overlap, best_prior_idx = overlaps.max(1, keepdim=True)   # 固定第0维度，把第一个维度取最大，匹配gt对应box的iou最大的
     # [1,num_priors] best ground truth for each prior
-    best_truth_overlap, best_truth_idx = overlaps.max(0, keepdim=True)
-    best_truth_idx.squeeze_(0)
-    best_truth_overlap.squeeze_(0)
-    best_prior_idx.squeeze_(1)
+    best_truth_overlap, best_truth_idx = overlaps.max(0, keepdim=True)   # 固定第1维度，把第0个维度里最大值取出，匹配box与gt iou最大的
+    best_truth_idx.squeeze_(0)  # 第0维度是1，去掉该维度 使其为1维 ,对应idx
+    best_truth_overlap.squeeze_(0)  # 第0维度是1，去掉该维度 使其为1维 ,对应iou的值
+    best_prior_idx.squeeze_(1)  # 第1维度是1，去掉该维度，使其为1维
     best_prior_overlap.squeeze_(1)
-    best_truth_overlap.index_fill_(0, best_prior_idx, 2)  # ensure best prior
+    best_truth_overlap.index_fill_(0, best_prior_idx, 2)  # ensure best prior 将最好的gt匹配到的最好的box,对应的iou值改为2
     # TODO refactor: index  best_prior_idx with long tensor
     # ensure every gt matches with its prior of max overlap
     for j in range(best_prior_idx.size(0)):
-        best_truth_idx[best_prior_idx[j]] = j
-    matches = truths[best_truth_idx]          # Shape: [num_priors,4]
-    conf = labels[best_truth_idx]          # Shape: [num_priors]
-    conf[best_truth_overlap < threshold] = 0  # label as background
-    loc = encode(matches, priors, variances)
-    loc_t[idx] = loc    # [num_priors,4] encoded offsets to learn
-    conf_t[idx] = conf  # [num_priors] top class label for each prior
+        best_truth_idx[best_prior_idx[j]] = j  # 根据匹配到的最好候选框对应的obj idx,覆盖修改最好gt匹配的idx
+    matches = truths[best_truth_idx]          # Shape: [num_priors,4] # 每个候选框匹配到的gt 的xyxy坐标
+    conf = labels[best_truth_idx]          # Shape: [num_priors] 获取每个候选框匹配到的label
+    conf[best_truth_overlap < threshold] = 0  # label as background 将小于iou阈值的候选框label改为0,负样本
+    loc = encode(matches, priors, variances)  # encode loc
+    loc_t[idx] = loc    # [num_priors,4] encoded offsets to learn 当前图片/batch需要预测的loc
+    conf_t[idx] = conf  # [num_priors] top class label for each prior 当前图片/batch需要预测的conf
 
 def encode(matched, priors, variances):
     """Encode the variances from the priorbox layers into the ground truth boxes
     we have matched (based on jaccard overlap) with the prior boxes.
     Args:
-        matched: (tensor) Coords of ground truth for each prior in point-form
+        matched: (tensor) Coords of ground truth for each prior in point-form xyxy
             Shape: [num_priors, 4].
         priors: (tensor) Prior boxes in center-offset form
             Shape: [num_priors,4].
@@ -234,15 +234,15 @@ def encode(matched, priors, variances):
         encoded boxes (tensor), Shape: [num_priors, 4]
     """
 
-    # dist b/t match center and prior's center
+    # dist b/t match center and prior's center  # g_cxcy匹配到的box,其中心点和gt中心点的距离
     g_cxcy = (matched[:, :2] + matched[:, 2:])/2 - priors[:, :2]
     # encode variance
-    g_cxcy /= (variances[0] * priors[:, 2:])
+    g_cxcy /= (variances[0] * priors[:, 2:])   # l^cxy = (b^cxy-d^xcy)/d^cxy/variances[0]
     # match wh / prior wh
-    g_wh = (matched[:, 2:] - matched[:, :2]) / priors[:, 2:]
-    g_wh = torch.log(g_wh) / variances[1]
+    g_wh = (matched[:, 2:] - matched[:, :2]) / priors[:, 2:]  # b^wh/d^wh
+    g_wh = torch.log(g_wh) / variances[1]  # log(b^wh/d^wh)/variances[1]
     # return target for smooth_l1_loss
-    return torch.cat([g_cxcy, g_wh], 1)  # [num_priors,4]
+    return torch.cat([g_cxcy, g_wh], 1)  # [num_priors,4] 返回需要预测的dis
 
 
 def encode_multi(matched, priors, offsets, variances):
@@ -347,7 +347,7 @@ def nms(boxes, scores, overlap=0.5, top_k=200):
         The indices of the kept boxes with respect to num_priors.
     """
 
-    keep = torch.Tensor(scores.size(0)).fill_(0).long()
+    keep = scores.new(scores.size(0)).zero_().long()
     if boxes.numel() == 0:
         return keep
     x1 = boxes[:, 0]
